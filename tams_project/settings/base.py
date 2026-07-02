@@ -111,3 +111,62 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATICFILES_DIRS = [BASE_DIR / 'static']
+
+# Unfold UI Customization
+UNFOLD = {
+    "SITE_TITLE": "Veblika Travel TAMS",
+    "SITE_HEADER": "Travel Agent Panel",
+    "SITE_ICON": "travel_explore",  # material symbol
+    "STYLES": [
+        lambda request: "/static/css/custom_unfold.css",
+    ],
+    "COLORS": {
+        "primary": {
+            "50": "236 254 255",
+            "100": "207 250 254",
+            "200": "165 243 252",
+            "300": "103 232 249",
+            "400": "34 211 238",
+            "500": "6 182 212",  # Cyan/Ocean Blue theme fitting for travel
+            "600": "8 145 178",
+            "700": "14 116 144",
+            "800": "21 94 117",
+            "900": "22 78 99",
+            "950": "8 51 68",
+        },
+    },
+    "SIDEBAR": {
+        "show_search": True,
+        "show_all_applications": True,
+        "navigation": [
+            {
+                "title": "CRM",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Customers",
+                        "icon": "groups",
+                        "link": "/admin/crm/customer/",
+                    },
+                    {
+                        "title": "Passengers",
+                        "icon": "person",
+                        "link": "/admin/crm/passenger/",
+                    },
+                ],
+            },
+            {
+                "title": "Bookings & Operations",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Bookings",
+                        "icon": "flight_takeoff",
+                        "link": "/admin/bookings/booking/",
+                    },
+                ],
+            },
+        ],
+    },
+}
