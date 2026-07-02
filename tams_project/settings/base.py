@@ -27,6 +27,7 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-4qwnn@k*_hgt#ulartt)f3-s*_
 # Application definition
 
 INSTALLED_APPS = [
+    'unfold',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
