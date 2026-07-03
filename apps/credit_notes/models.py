@@ -1,16 +1,31 @@
 from decimal import Decimal
 from django.db import models
 from apps.common.models import AuditModel
-from apps.bookings.models import Booking
+from apps.bookings.models import Booking, BookingService, BookingTraveler
+from apps.invoices.models import Invoice, InvoiceLine
+from apps.credit_notes.choices import CreditNoteStatus
 
 class CreditNote(AuditModel):
     booking = models.ForeignKey(Booking, on_delete=models.PROTECT, related_name='credit_notes')
+    invoice = models.ForeignKey(Invoice, on_delete=models.PROTECT, related_name='credit_notes', null=True, blank=True)
+    
     credit_note_number = models.CharField(max_length=50, unique=True, db_index=True)
-    amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
-    remaining_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
-    reason = models.TextField(blank=True)
     issued_date = models.DateField()
-    voucher_created = models.BooleanField(default=False)
+    
+    supplier_refund_expected = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    supplier_refund_received = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    supplier_refund_date = models.DateField(null=True, blank=True)
+    
+    total_credit = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    remaining_credit = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    
+    reason = models.TextField(blank=True)
+    remarks = models.TextField(blank=True)
+    status = models.CharField(max_length=50, choices=CreditNoteStatus.choices, default=CreditNoteStatus.ACTIVE)
+    
+    from django.conf import settings
+    cancelled_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='cancelled_credit_notes')
+    cancelled_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = "Credit Note"
@@ -18,3 +33,43 @@ class CreditNote(AuditModel):
 
     def __str__(self):
         return f"{self.credit_note_number} - {self.booking.customer.name}"
+
+
+class CreditNoteLine(AuditModel):
+    """
+    Detailed lines of what was refunded, optionally linked to specific services.
+    """
+    credit_note = models.ForeignKey(CreditNote, on_delete=models.CASCADE, related_name='lines')
+    
+    # Optional links
+    invoice_line = models.ForeignKey(InvoiceLine, on_delete=models.SET_NULL, null=True, blank=True, related_name='credit_note_lines')
+    booking_traveler = models.ForeignKey(BookingTraveler, on_delete=models.SET_NULL, null=True, blank=True, related_name='credit_note_lines')
+    
+    description = models.CharField(max_length=255)
+    
+    taxable_refund = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    cgst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
+    cgst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    sgst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
+    sgst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    igst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
+    igst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    
+    total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    
+    class Meta:
+        verbose_name = "Credit Note Line"
+        verbose_name_plural = "Credit Note Lines"
+
+
+class CreditAllocation(AuditModel):
+    """
+    Tracks how a Credit Note was applied to an Invoice.
+    """
+    credit_note = models.ForeignKey(CreditNote, on_delete=models.PROTECT, related_name='allocations')
+    invoice = models.ForeignKey(Invoice, on_delete=models.PROTECT, related_name='credit_allocations')
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    
+    class Meta:
+        verbose_name = "Credit Allocation"
+        verbose_name_plural = "Credit Allocations"

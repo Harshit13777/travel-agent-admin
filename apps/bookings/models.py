@@ -87,6 +87,8 @@ class ServiceType(AuditModel):
     name = models.CharField(max_length=50, unique=True)
     display_order = models.PositiveIntegerField(default=1)
     is_active = models.BooleanField(default=True)
+    is_taxable = models.BooleanField(default=False)
+    default_gst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
 
     class Meta:
         verbose_name = "Service Type"
@@ -160,6 +162,10 @@ class BookingTraveler(AuditModel):
     fare = models.DecimalField(max_digits=10, decimal_places=2, default=ZERO_AMOUNT)
     baggage = models.CharField(max_length=100, blank=True)
     cancellation_reason = models.TextField(blank=True)
+    
+    cancel_reason = models.TextField(blank=True)
+    cancelled_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='cancelled_travelers')
+    cancelled_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = "Booking Traveler"

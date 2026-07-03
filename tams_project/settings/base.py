@@ -47,7 +47,6 @@ INSTALLED_APPS = [
     'apps.invoices',
     'apps.payments',
     'apps.credit_notes',
-    'apps.vouchers',
     'apps.documents',
     'apps.reminders',
 ]
@@ -209,11 +208,6 @@ UNFOLD = {
                         "title": "Credit Notes",
                         "icon": "credit_score",
                         "link": "/admin/credit_notes/creditnote/",
-                    },
-                    {
-                        "title": "Vouchers",
-                        "icon": "redeem",
-                        "link": "/admin/vouchers/voucher/",
                     },
                 ],
             },

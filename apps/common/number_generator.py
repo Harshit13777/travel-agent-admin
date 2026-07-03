@@ -36,5 +36,4 @@ def generate_invoice_number() -> str:
 def generate_credit_note_number() -> str:
     return _generate_number(prefix="CN")
 
-def generate_voucher_number() -> str:
-    return _generate_number(prefix="VCH")
+

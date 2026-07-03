@@ -7,3 +7,6 @@ class PaymentAdmin(ModelAdmin):
     list_display = ['amount', 'invoice', 'date', 'method', 'received_by']
     search_fields = ['reference_number', 'invoice__invoice_number']
     list_filter = ['method']
+    
+    def has_delete_permission(self, request, obj=None):
+        return False
