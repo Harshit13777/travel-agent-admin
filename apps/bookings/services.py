@@ -83,13 +83,16 @@ def cancel_booking(booking: Booking, user=None):
         return True
 
 def confirm_booking(booking: Booking, user=None):
+    if booking.services.count() == 0:
+        raise ValueError("Cannot confirm a booking with no services.")
+
     with transaction.atomic():
         booking.status = BookingStatus.CONFIRMED
         booking.save()
         BookingHistory.objects.create(
             booking=booking,
             action="Booking Confirmed",
-            description="Booking confirmed and ready for invoicing.",
+            description="Booking confirmed manually.",
             user=user
         )
         return True

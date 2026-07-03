@@ -57,10 +57,6 @@ class Booking(AuditModel):
     @property
     def is_locked(self):
         return self.has_invoice
-        
-    @property
-    def is_completed(self):
-        return self.status == BookingStatus.COMPLETED
 
     @property
     def invoice_total(self):
