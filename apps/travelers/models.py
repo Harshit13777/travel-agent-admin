@@ -3,18 +3,18 @@ from django.db import models
 from django.core.exceptions import ValidationError
 from apps.common.models import AuditModel
 from apps.customers.models import Customer
-from apps.common.choices import GENDER_CHOICES, IDENTITY_CHOICES
+from apps.common.choices import Gender, IdentityType
 
 class Traveler(AuditModel):
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name='travelers')
     full_name = models.CharField(max_length=200, db_index=True)
     dob = models.DateField(null=True, blank=True)
-    gender = models.CharField(max_length=20, choices=GENDER_CHOICES, blank=True)
     phone = models.CharField(max_length=15, blank=True, db_index=True)
     email = models.EmailField(blank=True, db_index=True)
     nationality = models.CharField(max_length=50, default='Indian')
     
-    primary_identity_type = models.CharField(max_length=50, choices=IDENTITY_CHOICES, default='AADHAAR')
+    gender = models.CharField(max_length=10, choices=Gender.choices, default=Gender.MALE)
+    primary_identity_type = models.CharField(max_length=50, choices=IdentityType.choices, default=IdentityType.AADHAAR)
     primary_identity_number = models.CharField(max_length=50, blank=True, db_index=True)
     
     passport_number = models.CharField(max_length=50, blank=True, db_index=True)

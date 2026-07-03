@@ -3,11 +3,11 @@ from django.db import models
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from apps.common.models import AuditModel
-from apps.common.choices import CUSTOMER_TYPES
+from apps.common.choices import CustomerType
 
 class Customer(AuditModel):
     name = models.CharField(max_length=255, db_index=True)
-    customer_type = models.CharField(max_length=50, choices=CUSTOMER_TYPES, default='INDIVIDUAL')
+    customer_type = models.CharField(max_length=50, choices=CustomerType.choices, default=CustomerType.INDIVIDUAL)
     contact_person = models.CharField(max_length=255, blank=True)
     phone = models.CharField(max_length=15, blank=True, db_index=True)
     email = models.EmailField(blank=True, db_index=True)

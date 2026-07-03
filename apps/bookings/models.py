@@ -6,8 +6,8 @@ from apps.common.models import AuditModel
 from apps.customers.models import Customer, Supplier
 from apps.travelers.models import Traveler
 from apps.common.choices import (
-    BOOKING_STATUS_CHOICES, BOOKING_SERVICE_STATUS_CHOICES,
-    PASSENGER_STATUS_CHOICES, BOOKING_SOURCE_CHOICES, PRIORITY_CHOICES
+    BookingStatus, BookingServiceStatus,
+    PassengerStatus, BookingSource, Priority
 )
 
 class Booking(AuditModel):
@@ -15,49 +15,71 @@ class Booking(AuditModel):
     title = models.CharField(max_length=200, blank=True)
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name='bookings')
     assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_bookings')
-    booking_source = models.CharField(max_length=50, choices=BOOKING_SOURCE_CHOICES, default='WALK_IN')
-    priority = models.CharField(max_length=50, choices=PRIORITY_CHOICES, default='MEDIUM')
+    booking_source = models.CharField(max_length=50, choices=BookingSource.choices, default=BookingSource.WALK_IN)
+    priority = models.CharField(max_length=50, choices=Priority.choices, default=Priority.MEDIUM)
     journey_start = models.DateField(null=True, blank=True)
     journey_end = models.DateField(null=True, blank=True)
     expected_payment_date = models.DateField(null=True, blank=True)
-    status = models.CharField(max_length=50, choices=BOOKING_STATUS_CHOICES, default='DRAFT')
+    status = models.CharField(max_length=50, choices=BookingStatus.choices, default=BookingStatus.DRAFT)
     notes = models.TextField(blank=True)
 
     class Meta:
         verbose_name = "Booking"
         verbose_name_plural = "Bookings"
 
+    def clean(self):
+        # clean() is only for model data validation (e.g., date checks).
+        # Business workflow logic belongs in services.py
+        if self.journey_start and self.journey_end and self.journey_end < self.journey_start:
+            from django.core.exceptions import ValidationError
+            raise ValidationError({'journey_end': 'Journey end cannot be before journey start.'})
+
     def __str__(self):
         title_str = f" - {self.title}" if self.title else ""
         return f"{self.booking_number}{title_str} ({self.customer.name})"
 
     @property
+    def total_supplier_cost(self):
+        return sum(service.supplier_cost for service in self.services.exclude(status=BookingServiceStatus.CANCELLED))
+
+    @property
     def total_selling_price(self):
-        return sum(service.selling_price for service in self.services.all())
+        return sum(service.selling_price for service in self.services.exclude(status=BookingServiceStatus.CANCELLED))
+        
+    @property
+    def total_discount(self):
+        return sum(service.discount for service in self.services.exclude(status=BookingServiceStatus.CANCELLED))
+
+    @property
+    def has_invoice(self):
+        return self.invoices.exists()
+        
+    @property
+    def is_locked(self):
+        return self.has_invoice
 
     @property
     def invoice_total(self):
-        # To be implemented when invoices app is built
-        return Decimal("0.00")
+        return sum(inv.total_amount for inv in self.invoices.exclude(status='CANCELLED'))
 
     @property
     def paid_amount(self):
-        # To be implemented when payments app is built
-        return Decimal("0.00")
+        # We will sum payments related to invoices. For now, assuming payment models can be queried.
+        # This requires importing Payment or querying via reverse relations if set up.
+        # A simpler way is sum(inv.paid_amount for inv in self.invoices) if invoice has paid_amount.
+        return sum(inv.paid_amount for inv in self.invoices.exclude(status='CANCELLED'))
+
+    @property
+    def credit_note_amount(self):
+        return sum(cn.amount for cn in self.credit_notes.all())
 
     @property
     def outstanding_amount(self):
-        return self.invoice_total - self.paid_amount
-
+        return self.invoice_total - self.paid_amount - self.credit_note_amount
+        
     @property
-    def credit_note_total(self):
-        # To be implemented when credit_notes app is built
-        return Decimal("0.00")
-
-    @property
-    def voucher_used_total(self):
-        # To be implemented when vouchers app is built
-        return Decimal("0.00")
+    def total_profit(self):
+        return self.total_selling_price - self.total_discount - self.total_supplier_cost
 
 
 class ServiceType(AuditModel):
@@ -82,7 +104,7 @@ class BookingService(AuditModel):
     to_location = models.CharField(max_length=100, blank=True)
     supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True, related_name='booking_services')
     reference_number = models.CharField(max_length=50, blank=True, db_index=True)
-    status = models.CharField(max_length=50, choices=BOOKING_SERVICE_STATUS_CHOICES, default='PENDING')
+    status = models.CharField(max_length=50, choices=BookingServiceStatus.choices, default=BookingServiceStatus.PENDING)
     currency = models.CharField(max_length=3, default='INR')
     supplier_cost = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     discount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
@@ -109,14 +131,14 @@ class BookingService(AuditModel):
         if self.journey_start and self.journey_end and self.journey_end < self.journey_start:
             raise ValidationError({'journey_end': 'Journey end cannot be before journey start.'})
 
-
 class BookingTraveler(AuditModel):
     booking_service = models.ForeignKey(BookingService, on_delete=models.CASCADE, related_name='booking_travelers')
     traveler = models.ForeignKey(Traveler, on_delete=models.PROTECT, related_name='booking_travelers')
-    passenger_status = models.CharField(max_length=50, choices=PASSENGER_STATUS_CHOICES, default='CONFIRMED')
+    passenger_status = models.CharField(max_length=50, choices=PassengerStatus.choices, default=PassengerStatus.CONFIRMED)
     ticket_number = models.CharField(max_length=50, blank=True)
     seat_details = models.CharField(max_length=20, blank=True)
     check_in_status = models.CharField(max_length=50, blank=True)
+    fare = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     baggage = models.CharField(max_length=100, blank=True)
     cancellation_reason = models.TextField(blank=True)
 

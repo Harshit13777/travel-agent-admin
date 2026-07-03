@@ -3,7 +3,7 @@ from django.db import models
 from apps.common.models import AuditModel
 from apps.customers.models import Customer
 from apps.credit_notes.models import CreditNote
-from apps.common.choices import VOUCHER_STATUS_CHOICES
+from apps.common.choices import VoucherStatus
 
 class Voucher(AuditModel):
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name='vouchers')
@@ -14,7 +14,7 @@ class Voucher(AuditModel):
     issued_date = models.DateField()
     expiry_date = models.DateField(null=True, blank=True)
     used_date = models.DateField(null=True, blank=True)
-    status = models.CharField(max_length=50, choices=VOUCHER_STATUS_CHOICES, default='ACTIVE')
+    status = models.CharField(max_length=50, choices=VoucherStatus.choices, default=VoucherStatus.ACTIVE)
     reason = models.TextField(blank=True)
 
     class Meta:

@@ -1,87 +1,78 @@
-CUSTOMER_TYPES = [
-    ('CORPORATE', 'Corporate'),
-    ('INDIVIDUAL', 'Individual'),
-    ('TRAVEL_AGENT', 'Travel Agent'),
-]
+from django.db import models
 
-GENDER_CHOICES = [
-    ('M', 'Male'),
-    ('F', 'Female'),
-    ('OTHER', 'Other'),
-]
+class CustomerType(models.TextChoices):
+    CORPORATE = 'CORPORATE', 'Corporate'
+    INDIVIDUAL = 'INDIVIDUAL', 'Individual'
+    TRAVEL_AGENT = 'TRAVEL_AGENT', 'Travel Agent'
 
-IDENTITY_CHOICES = [
-    ('PASSPORT', 'Passport'),
-    ('AADHAAR', 'Aadhaar'),
-    ('PAN', 'PAN'),
-    ('DRIVING_LICENSE', 'Driving License'),
-    ('OTHER', 'Other'),
-]
+class Gender(models.TextChoices):
+    MALE = 'M', 'Male'
+    FEMALE = 'F', 'Female'
+    OTHER = 'OTHER', 'Other'
 
-BOOKING_STATUS_CHOICES = [
-    ('DRAFT', 'Draft'),
-    ('CONFIRMED', 'Confirmed'),
-    ('CANCELLED', 'Cancelled'),
-    ('COMPLETED', 'Completed'),
-]
+class IdentityType(models.TextChoices):
+    PASSPORT = 'PASSPORT', 'Passport'
+    AADHAAR = 'AADHAAR', 'Aadhaar'
+    PAN = 'PAN', 'PAN'
+    DRIVING_LICENSE = 'DRIVING_LICENSE', 'Driving License'
+    OTHER = 'OTHER', 'Other'
 
-BOOKING_SERVICE_STATUS_CHOICES = [
-    ('PENDING', 'Pending'),
-    ('CONFIRMED', 'Confirmed'),
-    ('CANCELLED', 'Cancelled'),
-    ('COMPLETED', 'Completed'),
-]
+class BookingStatus(models.TextChoices):
+    DRAFT = 'DRAFT', 'Draft'
+    IN_PROGRESS = 'IN_PROGRESS', 'In Progress'
+    CONFIRMED = 'CONFIRMED', 'Confirmed'
+    COMPLETED = 'COMPLETED', 'Completed'
+    CANCELLED = 'CANCELLED', 'Cancelled'
 
-PASSENGER_STATUS_CHOICES = [
-    ('WAITING', 'Waiting'),
-    ('CONFIRMED', 'Confirmed'),
-    ('CANCELLED', 'Cancelled'),
-    ('CHECKED_IN', 'Checked In'),
-    ('NO_SHOW', 'No Show'),
-]
+class BookingServiceStatus(models.TextChoices):
+    PENDING = 'PENDING', 'Pending'
+    CONFIRMED = 'CONFIRMED', 'Confirmed'
+    CANCELLED = 'CANCELLED', 'Cancelled'
+    COMPLETED = 'COMPLETED', 'Completed'
 
-BOOKING_SOURCE_CHOICES = [
-    ('WALK_IN', 'Walk In'),
-    ('WHATSAPP', 'WhatsApp'),
-    ('PHONE', 'Phone'),
-    ('WEBSITE', 'Website'),
-    ('CORPORATE', 'Corporate'),
-    ('REFERENCE', 'Reference'),
-]
+class PassengerStatus(models.TextChoices):
+    PENDING = 'PENDING', 'Pending'
+    CONFIRMED = 'CONFIRMED', 'Confirmed'
+    WAITING = 'WAITING', 'Waiting'
+    CANCELLED = 'CANCELLED', 'Cancelled'
+    CHECKED_IN = 'CHECKED_IN', 'Checked In'
+    BOARDED = 'BOARDED', 'Boarded'
+    COMPLETED = 'COMPLETED', 'Completed'
 
-PRIORITY_CHOICES = [
-    ('LOW', 'Low'),
-    ('MEDIUM', 'Medium'),
-    ('HIGH', 'High'),
-    ('URGENT', 'Urgent'),
-]
+class BookingSource(models.TextChoices):
+    WALK_IN = 'WALK_IN', 'Walk In'
+    WHATSAPP = 'WHATSAPP', 'WhatsApp'
+    PHONE = 'PHONE', 'Phone'
+    WEBSITE = 'WEBSITE', 'Website'
+    CORPORATE = 'CORPORATE', 'Corporate'
+    REFERENCE = 'REFERENCE', 'Reference'
 
-INVOICE_TYPE_CHOICES = [
-    ('TAX', 'Tax Invoice'),
-    ('PROFORMA', 'Proforma'),
-]
+class Priority(models.TextChoices):
+    LOW = 'LOW', 'Low'
+    MEDIUM = 'MEDIUM', 'Medium'
+    HIGH = 'HIGH', 'High'
+    URGENT = 'URGENT', 'Urgent'
 
-INVOICE_STATUS_CHOICES = [
-    ('DRAFT', 'Draft'),
-    ('UNPAID', 'Unpaid'),
-    ('PARTIAL', 'Partially Paid'),
-    ('PAID', 'Paid'),
-    ('CANCELLED', 'Cancelled'),
-]
+class InvoiceType(models.TextChoices):
+    TAX = 'TAX', 'Tax Invoice'
+    PROFORMA = 'PROFORMA', 'Proforma'
 
-PAYMENT_METHOD_CHOICES = [
-    ('CASH', 'Cash'),
-    ('BANK_TRANSFER', 'Bank Transfer'),
-    ('UPI', 'UPI'),
-    ('CREDIT_CARD', 'Credit Card'),
-    ('CHEQUE', 'Cheque'),
-]
+class InvoiceStatus(models.TextChoices):
+    DRAFT = 'DRAFT', 'Draft'
+    UNPAID = 'UNPAID', 'Unpaid'
+    PARTIAL = 'PARTIAL', 'Partially Paid'
+    PAID = 'PAID', 'Paid'
+    CANCELLED = 'CANCELLED', 'Cancelled'
 
-VOUCHER_STATUS_CHOICES = [
-    ('ACTIVE', 'Active'),
-    ('USED', 'Used'),
-    ('EXPIRED', 'Expired'),
-    ('CANCELLED', 'Cancelled'),
-]
+class PaymentMethod(models.TextChoices):
+    CASH = 'CASH', 'Cash'
+    BANK_TRANSFER = 'BANK_TRANSFER', 'Bank Transfer'
+    UPI = 'UPI', 'UPI'
+    CREDIT_CARD = 'CREDIT_CARD', 'Credit Card'
+    CHEQUE = 'CHEQUE', 'Cheque'
 
-
+class VoucherStatus(models.TextChoices):
+    ACTIVE = 'ACTIVE', 'Active'
+    USED = 'USED', 'Used'
+    EXPIRED = 'EXPIRED', 'Expired'
+    CANCELLED = 'CANCELLED', 'Cancelled'
