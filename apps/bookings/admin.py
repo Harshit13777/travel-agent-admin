@@ -42,7 +42,8 @@ class BookingTravelerInline(TabularInline):
             return False
         return super().has_delete_permission(request, obj)
 
-from apps.bookings.services import confirm_booking, generate_invoice
+from apps.bookings.services import confirm_booking
+from apps.invoices.services import generate_invoice
 
 @admin.action(description="Confirm selected bookings")
 def action_confirm_booking(modeladmin, request, queryset):

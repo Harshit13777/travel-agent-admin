@@ -5,7 +5,6 @@ from apps.bookings.models import Booking, BookingService, BookingTraveler, Booki
 from apps.credit_notes.models import CreditNote
 from apps.vouchers.models import Voucher
 from apps.invoices.models import Invoice
-from apps.common.choices import InvoiceType
 from apps.bookings.choices import BookingStatus, BookingServiceStatus, PassengerStatus, BookingHistoryAction
 from apps.common.number_generator import generate_booking_number, generate_invoice_number, generate_credit_note_number, generate_voucher_number
 
@@ -219,40 +218,4 @@ def confirm_booking(booking: Booking, user=None) -> Booking:
         )
         return booking
 
-def generate_invoice(booking: Booking, user=None, invoice_type=InvoiceType.TAX) -> Invoice:
-    """
-    Generate an invoice for a confirmed booking.
 
-    This permanently locks the booking for financial edits.
-    """
-    if booking.status != BookingStatus.CONFIRMED:
-        from django.core.exceptions import ValidationError
-        raise ValidationError("Booking must be Confirmed to generate an invoice.")
-    
-    with transaction.atomic():
-        total_selling_price = sum(service.selling_price - service.discount for service in booking.services.exclude(status=BookingServiceStatus.CANCELLED))
-        
-        invoice_number = generate_invoice_number()
-        invoice = Invoice.objects.create(
-            booking=booking,
-            invoice_number=invoice_number,
-            invoice_type=invoice_type,
-            invoice_date=timezone.now().date(),
-            due_date=timezone.now().date(),
-            total_amount=total_selling_price
-        )
-        
-        booking.locked_at = timezone.now()
-        booking.save(update_fields=['locked_at'])
-        
-        log_booking_history(
-            booking=booking,
-            action=BookingHistoryAction.INVOICE_GENERATED,
-            description=f"Invoice {invoice_number} generated for {total_selling_price}.",
-            metadata={
-                "invoice_number": invoice_number,
-                "total_amount": str(total_selling_price)
-            },
-            user=user
-        )
-        return invoice

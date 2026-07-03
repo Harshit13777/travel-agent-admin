@@ -19,16 +19,7 @@ class IdentityType(models.TextChoices):
 
 
 
-class InvoiceType(models.TextChoices):
-    TAX = 'TAX', 'Tax Invoice'
-    PROFORMA = 'PROFORMA', 'Proforma'
 
-class InvoiceStatus(models.TextChoices):
-    DRAFT = 'DRAFT', 'Draft'
-    UNPAID = 'UNPAID', 'Unpaid'
-    PARTIAL = 'PARTIAL', 'Partially Paid'
-    PAID = 'PAID', 'Paid'
-    CANCELLED = 'CANCELLED', 'Cancelled'
 
 class PaymentMethod(models.TextChoices):
     CASH = 'CASH', 'Cash'
