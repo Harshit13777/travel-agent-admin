@@ -7,18 +7,38 @@ class BookingServiceInline(TabularInline):
     extra = 1
 
     def get_readonly_fields(self, request, obj=None):
-        if obj and obj.has_invoice:
+        if obj and obj.is_locked:
             return ['service_type', 'supplier_cost', 'selling_price', 'discount', 'currency']
         return []
+        
+    def has_add_permission(self, request, obj=None):
+        if obj and obj.is_locked:
+            return False
+        return super().has_add_permission(request, obj)
+        
+    def has_delete_permission(self, request, obj=None):
+        if obj and obj.is_locked:
+            return False
+        return super().has_delete_permission(request, obj)
 
 class BookingTravelerInline(TabularInline):
     model = BookingTraveler
     extra = 1
 
     def get_readonly_fields(self, request, obj=None):
-        if obj and obj.booking.has_invoice:
-            return ['traveler', 'passenger_status']
+        if obj and obj.booking.is_locked:
+            return ['traveler', 'fare']
         return []
+        
+    def has_add_permission(self, request, obj=None):
+        if obj and obj.booking.is_locked:
+            return False
+        return super().has_add_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        if obj and obj.booking.is_locked:
+            return False
+        return super().has_delete_permission(request, obj)
 
 from apps.bookings.services import confirm_booking, generate_invoice
 
@@ -51,7 +71,7 @@ class BookingAdmin(ModelAdmin):
     actions = [action_confirm_booking, action_generate_invoice]
 
     def get_readonly_fields(self, request, obj=None):
-        if obj and obj.has_invoice:
+        if obj and obj.is_locked:
             return ['customer', 'booking_source']
         return []
 
@@ -66,7 +86,7 @@ class BookingServiceAdmin(ModelAdmin):
     list_filter = ['status', 'service_type']
 
     def get_readonly_fields(self, request, obj=None):
-        if obj and obj.booking.has_invoice:
+        if obj and obj.booking.is_locked:
             return ['booking', 'service_type', 'supplier_cost', 'selling_price', 'discount', 'currency', 'supplier']
         return []
 

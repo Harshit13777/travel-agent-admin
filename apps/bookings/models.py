@@ -57,6 +57,10 @@ class Booking(AuditModel):
     @property
     def is_locked(self):
         return self.has_invoice
+        
+    @property
+    def is_completed(self):
+        return self.status == BookingStatus.COMPLETED
 
     @property
     def invoice_total(self):
@@ -97,7 +101,7 @@ class BookingService(AuditModel):
     booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name='services')
     display_order = models.PositiveIntegerField(default=1)
     service_type = models.ForeignKey(ServiceType, on_delete=models.PROTECT)
-    provider_name = models.CharField(max_length=100, blank=True)
+    service_provider = models.CharField(max_length=100, blank=True)
     journey_start = models.DateTimeField(null=True, blank=True)
     journey_end = models.DateTimeField(null=True, blank=True)
     from_location = models.CharField(max_length=100, blank=True)
