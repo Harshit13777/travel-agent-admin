@@ -17,41 +17,7 @@ class IdentityType(models.TextChoices):
     DRIVING_LICENSE = 'DRIVING_LICENSE', 'Driving License'
     OTHER = 'OTHER', 'Other'
 
-class BookingStatus(models.TextChoices):
-    DRAFT = 'DRAFT', 'Draft'
-    IN_PROGRESS = 'IN_PROGRESS', 'In Progress'
-    CONFIRMED = 'CONFIRMED', 'Confirmed'
-    COMPLETED = 'COMPLETED', 'Completed'
-    CANCELLED = 'CANCELLED', 'Cancelled'
 
-class BookingServiceStatus(models.TextChoices):
-    PENDING = 'PENDING', 'Pending'
-    CONFIRMED = 'CONFIRMED', 'Confirmed'
-    CANCELLED = 'CANCELLED', 'Cancelled'
-    COMPLETED = 'COMPLETED', 'Completed'
-
-class PassengerStatus(models.TextChoices):
-    PENDING = 'PENDING', 'Pending'
-    CONFIRMED = 'CONFIRMED', 'Confirmed'
-    WAITING = 'WAITING', 'Waiting'
-    CANCELLED = 'CANCELLED', 'Cancelled'
-    CHECKED_IN = 'CHECKED_IN', 'Checked In'
-    BOARDED = 'BOARDED', 'Boarded'
-    COMPLETED = 'COMPLETED', 'Completed'
-
-class BookingSource(models.TextChoices):
-    WALK_IN = 'WALK_IN', 'Walk In'
-    WHATSAPP = 'WHATSAPP', 'WhatsApp'
-    PHONE = 'PHONE', 'Phone'
-    WEBSITE = 'WEBSITE', 'Website'
-    CORPORATE = 'CORPORATE', 'Corporate'
-    REFERENCE = 'REFERENCE', 'Reference'
-
-class Priority(models.TextChoices):
-    LOW = 'LOW', 'Low'
-    MEDIUM = 'MEDIUM', 'Medium'
-    HIGH = 'HIGH', 'High'
-    URGENT = 'URGENT', 'Urgent'
 
 class InvoiceType(models.TextChoices):
     TAX = 'TAX', 'Tax Invoice'
@@ -76,3 +42,5 @@ class VoucherStatus(models.TextChoices):
     USED = 'USED', 'Used'
     EXPIRED = 'EXPIRED', 'Expired'
     CANCELLED = 'CANCELLED', 'Cancelled'
+
+

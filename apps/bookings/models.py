@@ -3,9 +3,10 @@ from django.db import models
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from apps.common.models import AuditModel
+from apps.common.constants import ZERO_AMOUNT
 from apps.customers.models import Customer, Supplier
 from apps.travelers.models import Traveler
-from apps.common.choices import (
+from apps.bookings.choices import (
     BookingStatus, BookingServiceStatus,
     PassengerStatus, BookingSource, Priority
 )
@@ -17,11 +18,12 @@ class Booking(AuditModel):
     assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_bookings')
     booking_source = models.CharField(max_length=50, choices=BookingSource.choices, default=BookingSource.WALK_IN)
     priority = models.CharField(max_length=50, choices=Priority.choices, default=Priority.MEDIUM)
-    journey_start = models.DateField(null=True, blank=True)
+    journey_start = models.DateField(null=True, blank=True, db_index=True)
     journey_end = models.DateField(null=True, blank=True)
     expected_payment_date = models.DateField(null=True, blank=True)
-    status = models.CharField(max_length=50, choices=BookingStatus.choices, default=BookingStatus.DRAFT)
+    status = models.CharField(max_length=50, choices=BookingStatus.choices, default=BookingStatus.DRAFT, db_index=True)
     notes = models.TextField(blank=True)
+    locked_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = "Booking"
@@ -29,11 +31,10 @@ class Booking(AuditModel):
 
     def clean(self):
         # clean() is only for model data validation (e.g., date checks).
-        # Business workflow logic belongs in services.py
         if self.journey_start and self.journey_end and self.journey_end < self.journey_start:
             from django.core.exceptions import ValidationError
             raise ValidationError({'journey_end': 'Journey end cannot be before journey start.'})
-
+            
     def __str__(self):
         title_str = f" - {self.title}" if self.title else ""
         return f"{self.booking_number}{title_str} ({self.customer.name})"
@@ -56,7 +57,7 @@ class Booking(AuditModel):
         
     @property
     def is_locked(self):
-        return self.has_invoice
+        return self.locked_at is not None
 
     @property
     def invoice_total(self):
@@ -84,10 +85,13 @@ class Booking(AuditModel):
 
 class ServiceType(AuditModel):
     name = models.CharField(max_length=50, unique=True)
+    display_order = models.PositiveIntegerField(default=1)
+    is_active = models.BooleanField(default=True)
 
     class Meta:
         verbose_name = "Service Type"
         verbose_name_plural = "Service Types"
+        ordering = ['display_order', 'name']
 
     def __str__(self):
         return self.name
@@ -104,17 +108,31 @@ class BookingService(AuditModel):
     to_location = models.CharField(max_length=100, blank=True)
     supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True, related_name='booking_services')
     reference_number = models.CharField(max_length=50, blank=True, db_index=True)
-    status = models.CharField(max_length=50, choices=BookingServiceStatus.choices, default=BookingServiceStatus.PENDING)
+    status = models.CharField(max_length=50, choices=BookingServiceStatus.choices, default=BookingServiceStatus.PENDING, db_index=True)
     currency = models.CharField(max_length=3, default='INR')
-    supplier_cost = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
-    discount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
-    selling_price = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    supplier_cost = models.DecimalField(max_digits=12, decimal_places=2, default=ZERO_AMOUNT)
+    discount = models.DecimalField(max_digits=12, decimal_places=2, default=ZERO_AMOUNT)
+    selling_price = models.DecimalField(max_digits=12, decimal_places=2, default=ZERO_AMOUNT)
     remarks = models.TextField(blank=True)
 
     class Meta:
         verbose_name = "Booking Service"
         verbose_name_plural = "Booking Services"
         ordering = ['display_order']
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(selling_price__gte=ZERO_AMOUNT),
+                name='booking_service_selling_price_gte_0'
+            ),
+            models.CheckConstraint(
+                condition=models.Q(supplier_cost__gte=ZERO_AMOUNT),
+                name='booking_service_supplier_cost_gte_0'
+            ),
+            models.CheckConstraint(
+                condition=models.Q(discount__gte=ZERO_AMOUNT),
+                name='booking_service_discount_gte_0'
+            )
+        ]
 
     def __str__(self):
         return f"{self.service_type.name} for {self.booking.booking_number}"
@@ -128,6 +146,7 @@ class BookingService(AuditModel):
         return self.net_price - self.supplier_cost
 
     def clean(self):
+        from django.core.exceptions import ValidationError
         if self.journey_start and self.journey_end and self.journey_end < self.journey_start:
             raise ValidationError({'journey_end': 'Journey end cannot be before journey start.'})
 
@@ -138,7 +157,7 @@ class BookingTraveler(AuditModel):
     ticket_number = models.CharField(max_length=50, blank=True)
     seat_details = models.CharField(max_length=20, blank=True)
     check_in_status = models.CharField(max_length=50, blank=True)
-    fare = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    fare = models.DecimalField(max_digits=10, decimal_places=2, default=ZERO_AMOUNT)
     baggage = models.CharField(max_length=100, blank=True)
     cancellation_reason = models.TextField(blank=True)
 
@@ -149,17 +168,21 @@ class BookingTraveler(AuditModel):
             models.UniqueConstraint(
                 fields=["booking_service", "traveler"],
                 name="unique_booking_service_traveler"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(fare__gte=ZERO_AMOUNT),
+                name='booking_traveler_fare_gte_0'
             )
         ]
 
     def __str__(self):
         return f"{self.traveler.full_name} - {self.booking_service}"
 
-
 class BookingHistory(AuditModel):
     booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name='history')
     action = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
 
     class Meta:

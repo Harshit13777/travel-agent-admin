@@ -2,7 +2,8 @@ from decimal import Decimal
 from django.db import models
 from apps.common.models import AuditModel
 from apps.bookings.models import Booking
-from apps.common.choices import InvoiceType, InvoiceStatus, BookingStatus
+from apps.common.choices import InvoiceType, InvoiceStatus
+from apps.bookings.choices import BookingStatus
 
 class Invoice(AuditModel):
     booking = models.ForeignKey(Booking, on_delete=models.PROTECT, related_name='invoices')

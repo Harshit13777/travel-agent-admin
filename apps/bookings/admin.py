@@ -5,6 +5,7 @@ from .models import Booking, ServiceType, BookingService, BookingTraveler, Booki
 class BookingServiceInline(TabularInline):
     model = BookingService
     extra = 1
+    autocomplete_fields = ['service_type', 'supplier']
 
     def get_readonly_fields(self, request, obj=None):
         if obj and obj.is_locked:
@@ -24,6 +25,7 @@ class BookingServiceInline(TabularInline):
 class BookingTravelerInline(TabularInline):
     model = BookingTraveler
     extra = 1
+    autocomplete_fields = ['traveler']
 
     def get_readonly_fields(self, request, obj=None):
         if obj and obj.booking.is_locked:
@@ -67,6 +69,8 @@ class BookingAdmin(ModelAdmin):
     list_display = ['booking_number', 'title', 'customer', 'status', 'priority']
     search_fields = ['booking_number', 'title', 'customer__name']
     list_filter = ['status', 'priority', 'booking_source']
+    autocomplete_fields = ['customer', 'assigned_to']
+    list_select_related = ['customer', 'assigned_to']
     inlines = [BookingServiceInline]
     actions = [action_confirm_booking, action_generate_invoice]
 
@@ -77,11 +81,16 @@ class BookingAdmin(ModelAdmin):
 
 @admin.register(ServiceType)
 class ServiceTypeAdmin(ModelAdmin):
-    list_display = ['name']
+    list_display = ['name', 'display_order', 'is_active']
+    list_editable = ['display_order', 'is_active']
+    search_fields = ['name']
 
 @admin.register(BookingService)
 class BookingServiceAdmin(ModelAdmin):
     list_display = ['booking', 'service_type', 'status', 'selling_price']
+    list_select_related = ['booking', 'service_type', 'supplier']
+    autocomplete_fields = ['booking', 'service_type', 'supplier']
+    search_fields = ['booking__booking_number', 'reference_number']
     inlines = [BookingTravelerInline]
     list_filter = ['status', 'service_type']
 
@@ -93,3 +102,5 @@ class BookingServiceAdmin(ModelAdmin):
 @admin.register(BookingHistory)
 class BookingHistoryAdmin(ModelAdmin):
     list_display = ['booking', 'action', 'user', 'created_at']
+    list_select_related = ['booking', 'user']
+    search_fields = ['booking__booking_number', 'action']
