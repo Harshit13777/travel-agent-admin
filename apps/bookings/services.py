@@ -24,7 +24,7 @@ def log_booking_history(booking, action, user, description="", metadata=None):
         user=user
     )
 
-def create_booking(customer, user=None, **kwargs) -> Booking:
+def create_booking(booking: Booking, user=None) -> Booking:
     """
     Create a new booking and generate a unique booking number.
     
@@ -36,16 +36,13 @@ def create_booking(customer, user=None, **kwargs) -> Booking:
         # For this MVP, a timestamp-based ID is sufficient and avoids locking the whole table.
         booking_number = generate_booking_number()
         
-        booking = Booking.objects.create(
-            booking_number=booking_number,
-            customer=customer,
-            **kwargs
-        )
+        booking.booking_number = booking_number
+        booking.save()
         
         log_booking_history(
             booking=booking,
             action=BookingHistoryAction.BOOKING_CREATED,
-            description=f"Booking created for {customer.name}.",
+            description=f"Booking created for {booking.customer.name}.",
             metadata={"booking_number": booking_number},
             user=user
         )

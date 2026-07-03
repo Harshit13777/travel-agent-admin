@@ -75,9 +75,25 @@ class BookingAdmin(ModelAdmin):
     actions = [action_confirm_booking, action_generate_invoice]
 
     def get_readonly_fields(self, request, obj=None):
-        if obj and obj.is_locked:
-            return ['customer', 'booking_source']
+        if obj is None:
+            return []
+            
+        readonly = ['booking_number', 'locked_at']
+        if obj.is_locked:
+            readonly.extend(['customer', 'booking_source'])
+        return readonly
+
+    def get_exclude(self, request, obj=None):
+        if obj is None:
+            return ['booking_number', 'locked_at']
         return []
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            from apps.bookings.services import create_booking
+            create_booking(booking=obj, user=request.user)
+        else:
+            super().save_model(request, obj, form, change)
 
 @admin.register(ServiceType)
 class ServiceTypeAdmin(ModelAdmin):
