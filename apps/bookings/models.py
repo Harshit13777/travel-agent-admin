@@ -44,8 +44,8 @@ class Booking(AuditModel):
         return sum(service.supplier_cost for service in self.services.exclude(status=BookingServiceStatus.CANCELLED))
 
     @property
-    def total_selling_price(self):
-        return sum(service.selling_price for service in self.services.exclude(status=BookingServiceStatus.CANCELLED))
+    def total_service_charge(self):
+        return sum(service.service_charge for service in self.services.exclude(status=BookingServiceStatus.CANCELLED))
         
     @property
     def total_discount(self):
@@ -80,7 +80,7 @@ class Booking(AuditModel):
         
     @property
     def total_profit(self):
-        return self.total_selling_price - self.total_discount - self.total_supplier_cost
+        return self.total_service_charge - self.total_discount - self.total_supplier_cost
 
 
 class ServiceType(AuditModel):
@@ -112,7 +112,7 @@ class BookingService(AuditModel):
     currency = models.CharField(max_length=3, default='INR', editable=False)
     supplier_cost = models.DecimalField(max_digits=12, decimal_places=2, default=ZERO_AMOUNT)
     discount = models.DecimalField(max_digits=12, decimal_places=2, default=ZERO_AMOUNT)
-    selling_price = models.DecimalField(max_digits=12, decimal_places=2, default=ZERO_AMOUNT)
+    service_charge = models.DecimalField(max_digits=12, decimal_places=2, default=ZERO_AMOUNT)
     remarks = models.TextField(blank=True)
 
     class Meta:
@@ -121,8 +121,8 @@ class BookingService(AuditModel):
         ordering = ['display_order']
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(selling_price__gte=ZERO_AMOUNT),
-                name='booking_service_selling_price_gte_0'
+                condition=models.Q(service_charge__gte=ZERO_AMOUNT),
+                name='booking_service_service_charge_gte_0'
             ),
             models.CheckConstraint(
                 condition=models.Q(supplier_cost__gte=ZERO_AMOUNT),
@@ -139,7 +139,7 @@ class BookingService(AuditModel):
 
     @property
     def net_price(self):
-        return self.selling_price - self.discount
+        return self.service_charge - self.discount
 
     @property
     def profit(self):

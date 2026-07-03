@@ -9,7 +9,7 @@ class BookingServiceInline(TabularInline):
 
     def get_readonly_fields(self, request, obj=None):
         if obj and obj.is_locked:
-            return ['service_type', 'supplier_cost', 'selling_price', 'discount', 'currency']
+            return ['service_type', 'supplier_cost', 'service_charge', 'discount', 'currency']
         return []
         
     def has_add_permission(self, request, obj=None):
@@ -104,7 +104,7 @@ class ServiceTypeAdmin(ModelAdmin):
 
 @admin.register(BookingService)
 class BookingServiceAdmin(ModelAdmin):
-    list_display = ['booking', 'service_type', 'status', 'selling_price']
+    list_display = ['booking', 'service_type', 'status', 'service_charge']
     list_select_related = ['booking', 'service_type', 'supplier']
     autocomplete_fields = ['booking', 'service_type', 'supplier']
     search_fields = ['booking__booking_number', 'reference_number']
@@ -113,7 +113,7 @@ class BookingServiceAdmin(ModelAdmin):
 
     def get_readonly_fields(self, request, obj=None):
         if obj and obj.booking.is_locked:
-            return ['booking', 'service_type', 'supplier_cost', 'selling_price', 'discount', 'currency', 'supplier']
+            return ['booking', 'service_type', 'supplier_cost', 'service_charge', 'discount', 'currency', 'supplier']
         return []
 
 @admin.register(BookingHistory)

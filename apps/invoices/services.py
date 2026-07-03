@@ -37,7 +37,7 @@ def generate_invoice(booking: Booking, user=None) -> Invoice:
         if not services:
             raise ValidationError("No active services to invoice.")
             
-        subtotal = sum((service.selling_price - service.discount) for service in services)
+        subtotal = sum((service.service_charge - service.discount) for service in services)
         gst_rate = 0  # Assuming 0 for now as MVP didn't specify dynamic calculation
         gst_amount = 0
         grand_total = subtotal + gst_amount
