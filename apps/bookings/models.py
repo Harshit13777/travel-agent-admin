@@ -109,7 +109,7 @@ class BookingService(AuditModel):
     supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True, related_name='booking_services')
     reference_number = models.CharField(max_length=50, blank=True, db_index=True)
     status = models.CharField(max_length=50, choices=BookingServiceStatus.choices, default=BookingServiceStatus.PENDING, db_index=True)
-    currency = models.CharField(max_length=3, default='INR')
+    currency = models.CharField(max_length=3, default='INR', editable=False)
     supplier_cost = models.DecimalField(max_digits=12, decimal_places=2, default=ZERO_AMOUNT)
     discount = models.DecimalField(max_digits=12, decimal_places=2, default=ZERO_AMOUNT)
     selling_price = models.DecimalField(max_digits=12, decimal_places=2, default=ZERO_AMOUNT)
