@@ -21,11 +21,15 @@ class CreditNote(AuditModel):
     
     reason = models.TextField(blank=True)
     remarks = models.TextField(blank=True)
-    status = models.CharField(max_length=50, choices=CreditNoteStatus.choices, default=CreditNoteStatus.ACTIVE)
+    status = models.CharField(max_length=50, choices=CreditNoteStatus.choices, default=CreditNoteStatus.ACTIVE, db_index=True)
     
     from django.conf import settings
     cancelled_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='cancelled_credit_notes')
     cancelled_at = models.DateTimeField(null=True, blank=True)
+    
+    voided_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='voided_credit_notes')
+    voided_at = models.DateTimeField(null=True, blank=True)
+    void_reason = models.TextField(blank=True)
 
     class Meta:
         verbose_name = "Credit Note"

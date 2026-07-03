@@ -2,14 +2,14 @@ from django.utils import timezone
 from django.db import transaction
 from apps.common.models import NumberSequence
 
-def _generate_number(*, prefix: str) -> str:
+def _generate_number(sequence_name: str, prefix: str) -> str:
     """
     Generate a transaction-safe number.
     Uses select_for_update to prevent race conditions.
     """
     with transaction.atomic():
         seq, created = NumberSequence.objects.select_for_update().get_or_create(
-            prefix=prefix,
+            prefix=sequence_name,
             defaults={'last_value': ''}
         )
         
@@ -28,12 +28,15 @@ def _generate_number(*, prefix: str) -> str:
         return f"{prefix}-{current_time_str}"
 
 def generate_booking_number() -> str:
-    return _generate_number(prefix="BKG")
+    return _generate_number("BOOKING", "BKG")
 
 def generate_invoice_number() -> str:
-    return _generate_number(prefix="INV")
+    return _generate_number("INVOICE", "INV")
 
 def generate_credit_note_number() -> str:
-    return _generate_number(prefix="CN")
+    return _generate_number("CREDIT_NOTE", "CN")
+
+def generate_payment_number() -> str:
+    return _generate_number("PAYMENT", "PAY")
 
 

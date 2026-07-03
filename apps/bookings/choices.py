@@ -45,3 +45,6 @@ class BookingHistoryAction(models.TextChoices):
     PASSENGER_CANCELLED = 'PASSENGER_CANCELLED', 'Passenger Cancelled'
     PASSENGER_DELETED = 'PASSENGER_DELETED', 'Passenger Deleted'
     INVOICE_GENERATED = 'INVOICE_GENERATED', 'Invoice Generated'
+    INVOICE_CANCELLED = 'INVOICE_CANCELLED', 'Invoice Cancelled'
+    CREDIT_NOTE_GENERATED = 'CREDIT_NOTE_GENERATED', 'Credit Note Generated'
+    CREDIT_NOTE_VOIDED = 'CREDIT_NOTE_VOIDED', 'Credit Note Voided'

@@ -7,7 +7,7 @@ from apps.invoices.choices import InvoiceStatus
 class Invoice(AuditModel):
     booking = models.OneToOneField(Booking, on_delete=models.PROTECT, related_name='invoice')
     invoice_number = models.CharField(max_length=50, unique=True, db_index=True)
-    invoice_date = models.DateField()
+    invoice_date = models.DateField(db_index=True)
     due_date = models.DateField()
     currency = models.CharField(max_length=3, default='INR', editable=False)
     
@@ -25,7 +25,7 @@ class Invoice(AuditModel):
     credit_applied = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     final_payable = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     
-    status = models.CharField(max_length=50, choices=InvoiceStatus.choices, default=InvoiceStatus.DRAFT)
+    status = models.CharField(max_length=50, choices=InvoiceStatus.choices, default=InvoiceStatus.DRAFT, db_index=True)
     remarks = models.TextField(blank=True)
 
     class Meta:

@@ -42,7 +42,7 @@ def create_booking(booking: Booking, user=None) -> Booking:
             booking=booking,
             action=BookingHistoryAction.BOOKING_CREATED,
             description=f"Booking created for {booking.customer.name}.",
-            metadata={"booking_number": booking_number},
+            metadata={"booking_id": booking.id},
             user=user
         )
         return booking
@@ -66,7 +66,7 @@ def delete_booking_service(booking_service: BookingService, user=None) -> Bookin
             booking=booking,
             action=BookingHistoryAction.SERVICE_DELETED,
             description=f"Service {service_name} was deleted before invoice.",
-            metadata={"service_id": service_id},
+            metadata={"booking_service_id": service_id},
             user=user
         )
         return True
@@ -95,11 +95,9 @@ def delete_booking_traveler(booking_traveler: BookingTraveler, user=None) -> Boo
         )
         return True
 
-def cancel_passenger(booking_traveler: BookingTraveler, user=None, refund_amount: Decimal = Decimal('0.00'), create_credit_note: bool = False, create_voucher: bool = False, cancellation_reason: str = "") -> BookingTraveler:
+def cancel_passenger(booking_traveler: BookingTraveler, user=None, cancellation_reason: str = "") -> BookingTraveler:
     """
-    Cancel a passenger and optionally generate a refund.
-    
-    This preserves the financial history without deleting the record.
+    Cancel a passenger purely operationally.
     """
     with transaction.atomic():
         booking_traveler.passenger_status = PassengerStatus.CANCELLED
@@ -110,37 +108,8 @@ def cancel_passenger(booking_traveler: BookingTraveler, user=None, refund_amount
         history_msg = f"Passenger {booking_traveler.traveler.full_name} cancelled."
         metadata = {
             "traveler_id": booking_traveler.traveler.id,
-            "service_id": booking_traveler.booking_service.id
+            "booking_service_id": booking_traveler.booking_service.id
         }
-
-        if refund_amount > 0 and create_credit_note:
-            cn_number = generate_credit_note_number()
-            cn = CreditNote.objects.create(
-                booking=booking,
-                credit_note_number=cn_number,
-                amount=refund_amount,
-                remaining_amount=refund_amount,
-                reason=f"Refund for passenger {booking_traveler.traveler.full_name}",
-                issued_date=timezone.now().date(),
-                voucher_created=create_voucher
-            )
-            history_msg += f" Refund ₹{refund_amount}. Credit Note {cn_number} created."
-            metadata["refund_amount"] = str(refund_amount)
-            metadata["credit_note_number"] = cn_number
-            
-            if create_voucher:
-                vch_number = generate_voucher_number()
-                vch = Voucher.objects.create(
-                    customer=booking.customer,
-                    credit_note=cn,
-                    voucher_number=vch_number,
-                    original_amount=refund_amount,
-                    remaining_balance=refund_amount,
-                    issued_date=timezone.now().date(),
-                    reason=f"Voucher from CN {cn_number}"
-                )
-                history_msg += f" Voucher {vch_number} created."
-                metadata["voucher_number"] = vch_number
 
         log_booking_history(
             booking=booking,
@@ -170,7 +139,7 @@ def cancel_service(booking_service: BookingService, user=None, cancel_passengers
             booking=booking_service.booking,
             action=BookingHistoryAction.SERVICE_CANCELLED,
             description=f"Service {booking_service.service_type.name} cancelled.",
-            metadata={"service_id": booking_service.id},
+            metadata={"booking_service_id": booking_service.id},
             user=user
         )
         return booking_service
@@ -192,7 +161,7 @@ def cancel_booking(booking: Booking, user=None) -> Booking:
             booking=booking,
             action=BookingHistoryAction.BOOKING_CANCELLED,
             description=f"Entire Booking {booking.booking_number} cancelled.",
-            metadata={"booking_number": booking.booking_number},
+            metadata={"booking_id": booking.id},
             user=user
         )
         return booking
@@ -214,6 +183,7 @@ def confirm_booking(booking: Booking, user=None) -> Booking:
             booking=booking,
             action=BookingHistoryAction.BOOKING_CONFIRMED,
             description="Booking confirmed manually.",
+            metadata={"booking_id": booking.id},
             user=user
         )
         return booking

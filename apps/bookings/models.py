@@ -147,6 +147,14 @@ class BookingService(AuditModel):
     def profit(self):
         return self.net_price - self.supplier_cost
 
+    def delete(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        if hasattr(self, 'invoice_lines') and self.invoice_lines.exists():
+            raise ValidationError("Cannot delete BookingService that is linked to an InvoiceLine.")
+        if hasattr(self, 'credit_note_lines') and self.credit_note_lines.exists():
+            raise ValidationError("Cannot delete BookingService that is linked to a CreditNoteLine.")
+        super().delete(*args, **kwargs)
+
     def clean(self):
         from django.core.exceptions import ValidationError
         if self.journey_start and self.journey_end and self.journey_end < self.journey_start:
@@ -167,6 +175,12 @@ class BookingTraveler(AuditModel):
     cancelled_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='cancelled_travelers')
     cancelled_at = models.DateTimeField(null=True, blank=True)
 
+    def delete(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        if hasattr(self, 'credit_note_lines') and self.credit_note_lines.exists():
+            raise ValidationError("Cannot delete BookingTraveler that is linked to a CreditNoteLine.")
+        super().delete(*args, **kwargs)
+
     class Meta:
         verbose_name = "Booking Traveler"
         verbose_name_plural = "Booking Travelers"
@@ -186,7 +200,7 @@ class BookingTraveler(AuditModel):
 
 class BookingHistory(AuditModel):
     booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name='history')
-    action = models.CharField(max_length=255)
+    action = models.CharField(max_length=255, db_index=True)
     description = models.TextField(blank=True)
     metadata = models.JSONField(default=dict, blank=True)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
@@ -194,6 +208,9 @@ class BookingHistory(AuditModel):
     class Meta:
         verbose_name = "Booking History"
         verbose_name_plural = "Booking Histories"
+        indexes = [
+            models.Index(fields=['created_at']),
+        ]
 
     def __str__(self):
         return f"{self.booking.booking_number} - {self.action}"

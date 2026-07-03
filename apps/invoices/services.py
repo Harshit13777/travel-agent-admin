@@ -170,7 +170,7 @@ def cancel_invoice(invoice: Invoice, user=None) -> Invoice:
         
         log_booking_history(
             booking=invoice.booking,
-            action="INVOICE_CANCELLED",
+            action=BookingHistoryAction.INVOICE_CANCELLED,
             description=f"Invoice {invoice.invoice_number} was cancelled.",
             metadata={"invoice_id": invoice.id},
             user=user

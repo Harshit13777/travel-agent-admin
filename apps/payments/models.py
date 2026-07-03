@@ -8,9 +8,9 @@ from apps.common.choices import PaymentMethod
 class Payment(AuditModel):
     invoice = models.ForeignKey(Invoice, on_delete=models.PROTECT, related_name='payments')
     amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
-    date = models.DateField()
+    date = models.DateField(db_index=True)
     method = models.CharField(max_length=50, choices=PaymentMethod.choices, default=PaymentMethod.BANK_TRANSFER)
-    reference_number = models.CharField(max_length=100, blank=True)
+    reference_number = models.CharField(max_length=100, blank=True, db_index=True)
     remarks = models.TextField(blank=True)
     received_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='received_payments')
 
