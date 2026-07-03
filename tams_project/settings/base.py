@@ -38,11 +38,18 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'corsheaders',
-    'core',
-    'crm',
-    'bookings',
-    'finance',
-    'operations',
+    # New Modular ERP Apps
+    'apps.common',
+    'apps.accounts',
+    'apps.customers',
+    'apps.travelers',
+    'apps.bookings',
+    'apps.invoices',
+    'apps.payments',
+    'apps.credit_notes',
+    'apps.vouchers',
+    'apps.documents',
+    'apps.reminders',
 ]
 
 MIDDLEWARE = [
