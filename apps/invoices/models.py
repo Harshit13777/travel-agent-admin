@@ -53,7 +53,7 @@ class InvoiceLine(AuditModel):
     Immutable legal snapshot of a service at the time of invoicing.
     Never reads from BookingService again.
     """
-    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='lines')
+    invoice = models.ForeignKey(Invoice, on_delete=models.PROTECT, related_name='lines')
     booking_service = models.ForeignKey(BookingService, on_delete=models.SET_NULL, null=True, blank=True, related_name='invoice_lines')
     service_type = models.CharField(max_length=100)
     service_provider = models.CharField(max_length=100, blank=True)

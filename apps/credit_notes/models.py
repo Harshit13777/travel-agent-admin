@@ -43,7 +43,7 @@ class CreditNoteLine(AuditModel):
     """
     Detailed lines of what was refunded, optionally linked to specific services.
     """
-    credit_note = models.ForeignKey(CreditNote, on_delete=models.CASCADE, related_name='lines')
+    credit_note = models.ForeignKey(CreditNote, on_delete=models.PROTECT, related_name='lines')
     
     # Optional links
     invoice_line = models.ForeignKey(InvoiceLine, on_delete=models.SET_NULL, null=True, blank=True, related_name='credit_note_lines')

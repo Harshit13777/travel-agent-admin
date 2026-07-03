@@ -7,6 +7,8 @@ class PaymentAdmin(ModelAdmin):
     list_display = ['amount', 'invoice', 'date', 'method', 'received_by']
     search_fields = ['reference_number', 'invoice__invoice_number']
     list_filter = ['method']
+    list_select_related = ['invoice', 'received_by']
+    autocomplete_fields = ['invoice', 'received_by']
     
     def has_change_permission(self, request, obj=None):
         return False
