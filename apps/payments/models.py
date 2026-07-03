@@ -17,6 +17,12 @@ class Payment(AuditModel):
     class Meta:
         verbose_name = "Payment"
         verbose_name_plural = "Payments"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=Decimal('0.00')),
+                name='payment_amount_gt_0'
+            )
+        ]
 
     def __str__(self):
         return f"{self.amount} for {self.invoice.invoice_number}"

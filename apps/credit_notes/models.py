@@ -34,6 +34,16 @@ class CreditNote(AuditModel):
     class Meta:
         verbose_name = "Credit Note"
         verbose_name_plural = "Credit Notes"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(total_credit__gte=Decimal('0.00')),
+                name='credit_note_total_gte_0'
+            ),
+            models.CheckConstraint(
+                condition=models.Q(remaining_credit__gte=Decimal('0.00')),
+                name='credit_note_remaining_gte_0'
+            )
+        ]
 
     def __str__(self):
         return f"{self.credit_note_number} - {self.booking.customer.name}"
@@ -64,6 +74,12 @@ class CreditNoteLine(AuditModel):
     class Meta:
         verbose_name = "Credit Note Line"
         verbose_name_plural = "Credit Note Lines"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(total__gte=Decimal('0.00')),
+                name='credit_note_line_total_gte_0'
+            )
+        ]
 
 
 class CreditAllocation(AuditModel):
@@ -77,3 +93,9 @@ class CreditAllocation(AuditModel):
     class Meta:
         verbose_name = "Credit Allocation"
         verbose_name_plural = "Credit Allocations"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=Decimal('0.00')),
+                name='credit_allocation_amount_gt_0'
+            )
+        ]

@@ -31,6 +31,12 @@ class Invoice(AuditModel):
     class Meta:
         verbose_name = "Invoice"
         verbose_name_plural = "Invoices"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(grand_total__gte=Decimal('0.00')),
+                name='invoice_grand_total_gte_0'
+            )
+        ]
 
     def __str__(self):
         return f"{self.invoice_number} - {self.booking.customer.name}"
@@ -73,6 +79,12 @@ class InvoiceLine(AuditModel):
     class Meta:
         verbose_name = "Invoice Line"
         verbose_name_plural = "Invoice Lines"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(total__gte=Decimal('0.00')),
+                name='invoice_line_total_gte_0'
+            )
+        ]
 
     def __str__(self):
         return f"{self.service_type} for {self.invoice.invoice_number}"
