@@ -156,12 +156,17 @@ UNFOLD = {
                     {
                         "title": "Customers",
                         "icon": "groups",
-                        "link": "/admin/crm/customer/",
+                        "link": "/admin/customers/customer/",
                     },
                     {
-                        "title": "Passengers",
+                        "title": "Travelers",
                         "icon": "person",
-                        "link": "/admin/crm/passenger/",
+                        "link": "/admin/travelers/traveler/",
+                    },
+                    {
+                        "title": "Suppliers",
+                        "icon": "storefront",
+                        "link": "/admin/customers/supplier/",
                     },
                 ],
             },
@@ -173,6 +178,42 @@ UNFOLD = {
                         "title": "Bookings",
                         "icon": "flight_takeoff",
                         "link": "/admin/bookings/booking/",
+                    },
+                    {
+                        "title": "Booking Services",
+                        "icon": "luggage",
+                        "link": "/admin/bookings/bookingservice/",
+                    },
+                    {
+                        "title": "Service Types",
+                        "icon": "category",
+                        "link": "/admin/bookings/servicetype/",
+                    },
+                ],
+            },
+            {
+                "title": "Finance & Billing",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Invoices",
+                        "icon": "receipt_long",
+                        "link": "/admin/invoices/invoice/",
+                    },
+                    {
+                        "title": "Payments",
+                        "icon": "payments",
+                        "link": "/admin/payments/payment/",
+                    },
+                    {
+                        "title": "Credit Notes",
+                        "icon": "credit_score",
+                        "link": "/admin/credit_notes/creditnote/",
+                    },
+                    {
+                        "title": "Vouchers",
+                        "icon": "redeem",
+                        "link": "/admin/vouchers/voucher/",
                     },
                 ],
             },

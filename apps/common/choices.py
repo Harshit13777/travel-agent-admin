@@ -20,12 +20,9 @@ IDENTITY_CHOICES = [
 
 BOOKING_STATUS_CHOICES = [
     ('DRAFT', 'Draft'),
-    ('PENDING', 'Pending'),
-    ('ON_HOLD', 'On Hold'),
     ('CONFIRMED', 'Confirmed'),
-    ('PARTIALLY_COMPLETED', 'Partially Completed'),
-    ('COMPLETED', 'Completed'),
     ('CANCELLED', 'Cancelled'),
+    ('COMPLETED', 'Completed'),
 ]
 
 BOOKING_SERVICE_STATUS_CHOICES = [
@@ -36,10 +33,10 @@ BOOKING_SERVICE_STATUS_CHOICES = [
 ]
 
 PASSENGER_STATUS_CHOICES = [
-    ('CONFIRMED', 'Confirmed'),
-    ('RAC', 'RAC'),
     ('WAITING', 'Waiting'),
+    ('CONFIRMED', 'Confirmed'),
     ('CANCELLED', 'Cancelled'),
+    ('CHECKED_IN', 'Checked In'),
     ('NO_SHOW', 'No Show'),
 ]
 
@@ -58,4 +55,33 @@ PRIORITY_CHOICES = [
     ('HIGH', 'High'),
     ('URGENT', 'Urgent'),
 ]
+
+INVOICE_TYPE_CHOICES = [
+    ('TAX', 'Tax Invoice'),
+    ('PROFORMA', 'Proforma'),
+]
+
+INVOICE_STATUS_CHOICES = [
+    ('DRAFT', 'Draft'),
+    ('UNPAID', 'Unpaid'),
+    ('PARTIAL', 'Partially Paid'),
+    ('PAID', 'Paid'),
+    ('CANCELLED', 'Cancelled'),
+]
+
+PAYMENT_METHOD_CHOICES = [
+    ('CASH', 'Cash'),
+    ('BANK_TRANSFER', 'Bank Transfer'),
+    ('UPI', 'UPI'),
+    ('CREDIT_CARD', 'Credit Card'),
+    ('CHEQUE', 'Cheque'),
+]
+
+VOUCHER_STATUS_CHOICES = [
+    ('ACTIVE', 'Active'),
+    ('USED', 'Used'),
+    ('EXPIRED', 'Expired'),
+    ('CANCELLED', 'Cancelled'),
+]
+
 
