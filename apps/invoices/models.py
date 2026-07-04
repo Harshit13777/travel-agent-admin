@@ -9,15 +9,29 @@ class Invoice(AuditModel):
     invoice_number = models.CharField(max_length=50, unique=True, db_index=True)
     invoice_date = models.DateField(db_index=True)
     due_date = models.DateField()
-    currency = models.CharField(max_length=3, default='INR', editable=False)
+    # Company Identity & Settings Config Snapshot
+    company_name = models.CharField(max_length=255, default="Travel Agency")
+    gstin = models.CharField(max_length=50, blank=True)
+    pan = models.CharField(max_length=50, blank=True)
+    address = models.TextField(blank=True)
+    phone = models.CharField(max_length=50, blank=True)
+    email = models.EmailField(blank=True)
+    
+    currency = models.CharField(max_length=10, default='INR', editable=False)
+    gst_enabled = models.BooleanField(default=True)
+    gst_type = models.CharField(max_length=50, default='CGST_SGST')
+    gst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('18.00'))
+    tax_label_1 = models.CharField(max_length=50, default="CGST")
+    tax_label_2 = models.CharField(max_length=50, default="SGST")
+    tax_label_3 = models.CharField(max_length=50, default="IGST")
     
     # Financial Snapshots
+    supplier_total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    service_charge_total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    subtotal_before_tax = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     taxable_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
-    cgst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
     cgst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
-    sgst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
     sgst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
-    igst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
     igst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     
     grand_total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
@@ -65,15 +79,17 @@ class InvoiceLine(AuditModel):
     service_provider = models.CharField(max_length=100, blank=True)
     traveler_count = models.PositiveIntegerField(default=1)
     
+    supplier_cost = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    service_charge = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    discount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    is_taxable = models.BooleanField(default=True)
     taxable_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
-    cgst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
+    
+    # Line level tax calculations
     cgst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
-    sgst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
     sgst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
-    igst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
     igst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     
-    discount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     
     class Meta:

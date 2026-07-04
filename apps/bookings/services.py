@@ -240,32 +240,42 @@ def cancel_passenger_with_credit(traveler: BookingTraveler, data: dict, user=Non
             from apps.common.number_generator import generate_credit_note_number
             from apps.credit_notes.choices import CreditNoteStatus
             from apps.invoices.services import update_invoice_status
-            from decimal import Decimal
+            from decimal import Decimal, ROUND_HALF_UP
             
-            total_refund = (
-                data['taxable_refund'] +
-                data['cgst_amount'] +
-                data['sgst_amount'] +
-                data['igst_amount']
-            )
+            supplier_expected = data.get('supplier_refund_expected', Decimal("0.00"))
+            supplier_refund = data.get('supplier_refund', Decimal("0.00"))
+            service_charge_refund = data.get('service_charge_refund', Decimal("0.00"))
             
-            # Validate supplier refund
-            supplier_expected = data['supplier_refund_expected']
             if supplier_expected < Decimal("0.00"):
                 from django.core.exceptions import ValidationError
                 raise ValidationError("Supplier refund expected cannot be negative.")
-            
+                
             invoice = getattr(booking, 'invoice', None)
-            invoice_line = None
+            invoice_line = invoice.lines.filter(booking_service=booking_service).first() if invoice else None
             
-            if invoice:
-                invoice_line = invoice.lines.filter(booking_service=booking_service).first()
-                if invoice_line:
-                    from django.db.models import Sum
-                    already_refunded = CreditNoteLine.objects.filter(invoice_line=invoice_line).aggregate(sum_total=Sum('total'))['sum_total'] or Decimal("0.00")
-                    if already_refunded + total_refund > invoice_line.total:
-                        from django.core.exceptions import ValidationError
-                        raise ValidationError(f"Total refund ({total_refund}) plus already refunded amount ({already_refunded}) cannot exceed the invoice line total ({invoice_line.total}).")
+            taxable_refund = Decimal("0.00")
+            cgst_refund = Decimal("0.00")
+            sgst_refund = Decimal("0.00")
+            igst_refund = Decimal("0.00")
+            
+            if invoice and invoice_line and invoice_line.charge_gst:
+                taxable_refund = service_charge_refund
+                
+                # Proportional GST calculation based on the historical Invoice headers
+                if invoice.taxable_amount > Decimal("0.00"):
+                    ratio = taxable_refund / invoice.taxable_amount
+                    cgst_refund = (invoice.cgst_amount * ratio).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
+                    sgst_refund = (invoice.sgst_amount * ratio).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
+                    igst_refund = (invoice.igst_amount * ratio).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
+                    
+            total_refund = supplier_refund + service_charge_refund + cgst_refund + sgst_refund + igst_refund
+            
+            if invoice_line:
+                from django.db.models import Sum
+                already_refunded = CreditNoteLine.objects.filter(invoice_line=invoice_line).aggregate(sum_total=Sum('total'))['sum_total'] or Decimal("0.00")
+                if already_refunded + total_refund > invoice_line.total:
+                    from django.core.exceptions import ValidationError
+                    raise ValidationError(f"Total refund ({total_refund}) plus already refunded ({already_refunded}) cannot exceed invoice line total ({invoice_line.total}).")
             
             cn = CreditNote.objects.create(
                 booking=booking,
@@ -274,9 +284,13 @@ def cancel_passenger_with_credit(traveler: BookingTraveler, data: dict, user=Non
                 issued_date=timezone.now().date(),
                 supplier_refund_expected=supplier_expected,
                 supplier_refund_received=Decimal("0.00"),
+                taxable_refund=taxable_refund,
+                cgst_refund=cgst_refund,
+                sgst_refund=sgst_refund,
+                igst_refund=igst_refund,
                 total_credit=total_refund,
                 remaining_credit=total_refund,
-                reason=data['reason'],
+                reason=data.get('reason', ''),
                 cancelled_by=user,
                 cancelled_at=timezone.now(),
                 status=CreditNoteStatus.ACTIVE
@@ -287,13 +301,12 @@ def cancel_passenger_with_credit(traveler: BookingTraveler, data: dict, user=Non
                 invoice_line=invoice_line,
                 booking_traveler=traveler,
                 description=f"Refund for passenger {traveler.traveler.first_name}",
-                taxable_refund=data['taxable_refund'],
-                cgst_rate=data['cgst_rate'],
-                cgst_amount=data['cgst_amount'],
-                sgst_rate=data['sgst_rate'],
-                sgst_amount=data['sgst_amount'],
-                igst_rate=data['igst_rate'],
-                igst_amount=data['igst_amount'],
+                supplier_refund=supplier_refund,
+                service_charge_refund=service_charge_refund,
+                taxable_refund=taxable_refund,
+                cgst_refund=cgst_refund,
+                sgst_refund=sgst_refund,
+                igst_refund=igst_refund,
                 total=total_refund
             )
             

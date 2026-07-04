@@ -28,9 +28,11 @@ class InvoiceAdmin(ModelAdmin):
     def get_readonly_fields(self, request, obj=None):
         fields = [
             'invoice_number', 'currency', 'status', 'invoice_date', 'due_date',
-            'taxable_amount', 'cgst_rate', 'cgst_amount', 'sgst_rate', 'sgst_amount', 
-            'igst_rate', 'igst_amount', 'grand_total', 'original_total', 
-            'credit_applied', 'final_payable', 'booking'
+            'company_name', 'gstin', 'pan', 'address', 'phone', 'email',
+            'gst_enabled', 'gst_type', 'gst_rate', 'tax_label_1', 'tax_label_2', 'tax_label_3',
+            'supplier_total', 'service_charge_total', 'subtotal_before_tax', 'taxable_amount', 
+            'cgst_amount', 'sgst_amount', 'igst_amount', 
+            'grand_total', 'original_total', 'credit_applied', 'final_payable', 'booking'
         ]
         return fields
 

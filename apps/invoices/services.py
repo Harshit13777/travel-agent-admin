@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from django.db import transaction
 from django.utils import timezone
 from apps.invoices.models import Invoice, InvoiceLine
@@ -7,6 +7,7 @@ from apps.bookings.models import Booking
 from apps.bookings.choices import BookingStatus, BookingServiceStatus, BookingHistoryAction
 from apps.common.number_generator import generate_invoice_number
 from apps.bookings.services import log_booking_history
+from apps.common.services import get_company_settings
 from django.core.exceptions import ValidationError
 
 def generate_invoice(booking: Booking, user=None, applied_credit_notes=None) -> Invoice:
@@ -41,56 +42,138 @@ def generate_invoice(booking: Booking, user=None, applied_credit_notes=None) -> 
         raise ValidationError("An invoice already exists for this booking.")
     
     with transaction.atomic():
-        # Calculate financial totals from active services
+        # 1. Load active services
         services = booking.services.exclude(status=BookingServiceStatus.CANCELLED)
         if not services:
             raise ValidationError("No active services to invoice.")
             
-        subtotal = sum((service.service_charge - service.discount) for service in services)
-        gst_rate = Decimal("0.00")
-        gst_amount = Decimal("0.00")
-        original_total = subtotal + gst_amount
-        credit_applied = Decimal("0.00")
+        # 2. Read Company Settings Exactly Once
+        settings = get_company_settings()
         
+        # 3. Calculate Line Totals and Taxes
+        supplier_total = Decimal("0.00")
+        service_charge_total = Decimal("0.00")
+        taxable_amount = Decimal("0.00")
+        cgst_amount = Decimal("0.00")
+        sgst_amount = Decimal("0.00")
+        igst_amount = Decimal("0.00")
+        
+        line_data_list = []
+        
+        for service in services:
+            line_supplier = service.supplier_cost.quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
+            line_service_charge = service.service_charge.quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
+            line_discount = service.discount.quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
+            
+            line_taxable = Decimal("0.00")
+            line_cgst = Decimal("0.00")
+            line_sgst = Decimal("0.00")
+            line_igst = Decimal("0.00")
+            
+            is_taxable = getattr(service, 'is_taxable', True)
+            
+            if is_taxable:
+                line_taxable = (line_service_charge - line_discount).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
+                if line_taxable < Decimal('0.00'):
+                    line_taxable = Decimal("0.00")
+                    
+                if settings.gst_enabled:
+                    line_total_gst = (line_taxable * (settings.gst_rate / Decimal("100.00"))).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
+                    if settings.gst_type == 'CGST_SGST':
+                        line_cgst = (line_total_gst / Decimal("2.00")).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
+                        line_sgst = (line_total_gst / Decimal("2.00")).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
+                        if line_cgst + line_sgst != line_total_gst:
+                            line_cgst += line_total_gst - (line_cgst + line_sgst)
+                    elif settings.gst_type == 'IGST':
+                        line_igst = line_total_gst
+                        
+            line_total = (line_supplier + line_service_charge - line_discount + line_cgst + line_sgst + line_igst).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
+            
+            supplier_total += line_supplier
+            service_charge_total += (line_service_charge - line_discount)
+            taxable_amount += line_taxable
+            cgst_amount += line_cgst
+            sgst_amount += line_sgst
+            igst_amount += line_igst
+            
+            line_data_list.append({
+                'service': service,
+                'supplier_cost': line_supplier,
+                'service_charge': line_service_charge,
+                'discount': line_discount,
+                'is_taxable': is_taxable,
+                'taxable_amount': line_taxable,
+                'cgst_amount': line_cgst,
+                'sgst_amount': line_sgst,
+                'igst_amount': line_igst,
+                'total': line_total
+            })
+            
+        # 4. Validate Math
+        subtotal_before_tax = supplier_total + service_charge_total
+        grand_total = (subtotal_before_tax + cgst_amount + sgst_amount + igst_amount).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
+        
+        credit_applied = Decimal("0.00")
         invoice_number = generate_invoice_number()
         
+        # 5. Create Invoice Snapshot
         invoice = Invoice.objects.create(
             booking=booking,
             invoice_number=invoice_number,
             invoice_date=timezone.now().date(),
             due_date=timezone.now().date(),
-            taxable_amount=subtotal,
-            cgst_rate=gst_rate,
-            cgst_amount=gst_amount,
-            sgst_rate=Decimal("0.00"),
-            sgst_amount=Decimal("0.00"),
-            igst_rate=Decimal("0.00"),
-            igst_amount=Decimal("0.00"),
-            grand_total=original_total,
-            original_total=original_total,
-            credit_applied=Decimal("0.00"), # Will update below if allocations happen
-            final_payable=original_total,
+            
+            # Company Identity Snapshot
+            company_name=settings.company_name,
+            gstin=settings.gstin,
+            pan=settings.pan,
+            address=settings.address,
+            phone=settings.phone,
+            email=settings.email,
+            
+            # Settings Snapshot
+            currency=settings.currency,
+            gst_enabled=settings.gst_enabled,
+            gst_type=settings.gst_type,
+            gst_rate=settings.gst_rate,
+            tax_label_1=settings.tax_label_1,
+            tax_label_2=settings.tax_label_2,
+            tax_label_3=settings.tax_label_3,
+            
+            # Financial Snapshot
+            supplier_total=supplier_total,
+            service_charge_total=service_charge_total,
+            subtotal_before_tax=subtotal_before_tax,
+            taxable_amount=taxable_amount,
+            cgst_amount=cgst_amount,
+            sgst_amount=sgst_amount,
+            igst_amount=igst_amount,
+            
+            grand_total=grand_total,
+            original_total=grand_total,
+            credit_applied=Decimal("0.00"),
+            final_payable=grand_total,
             status=InvoiceStatus.GENERATED
         )
         
-        # Create Invoice Lines
-        for service in services:
-            service_total = service.service_charge - service.discount
+        # 6. Create Invoice Line Snapshots
+        for data in line_data_list:
+            service = data['service']
             InvoiceLine.objects.create(
                 invoice=invoice,
                 booking_service=service,
                 service_type=service.service_type.name,
                 service_provider=service.service_provider,
                 traveler_count=service.booking_travelers.exclude(passenger_status='CANCELLED').count(),
-                taxable_amount=service_total,
-                cgst_rate=gst_rate,
-                cgst_amount=gst_amount,
-                sgst_rate=Decimal("0.00"),
-                sgst_amount=Decimal("0.00"),
-                igst_rate=Decimal("0.00"),
-                igst_amount=Decimal("0.00"),
-                discount=service.discount,
-                total=service_total + gst_amount
+                supplier_cost=data['supplier_cost'],
+                service_charge=data['service_charge'],
+                discount=data['discount'],
+                is_taxable=data['is_taxable'],
+                taxable_amount=data['taxable_amount'],
+                cgst_amount=data['cgst_amount'],
+                sgst_amount=data['sgst_amount'],
+                igst_amount=data['igst_amount'],
+                total=data['total']
             )
         
         # Apply Credit Notes via CreditAllocation
@@ -133,8 +216,9 @@ def generate_invoice(booking: Booking, user=None, applied_credit_notes=None) -> 
                     cn.status = CreditNoteStatus.PARTIALLY_APPLIED
                 cn.save(update_fields=['status', 'remaining_credit'])
                 
-        final_payable = original_total - credit_applied
-        if final_payable < 0:
+        # 7. Lock Booking and Update Invoice
+        final_payable = grand_total - credit_applied
+        if final_payable < Decimal("0.00"):
             final_payable = Decimal("0.00")
             
         booking.locked_at = timezone.now()
@@ -144,14 +228,17 @@ def generate_invoice(booking: Booking, user=None, applied_credit_notes=None) -> 
         invoice.final_payable = final_payable
         invoice.save(update_fields=['credit_applied', 'final_payable'])
         
+        # 8. Audit Trail
         log_booking_history(
             booking=booking,
             action=BookingHistoryAction.INVOICE_GENERATED,
-            description=f"Invoice {invoice_number} generated for {original_total}. Final payable: {final_payable}",
+            description=f"Invoice {invoice_number} generated for {grand_total}. Final payable: {final_payable}",
             metadata={
                 "invoice_id": invoice.id,
-                "original_total": str(original_total),
-                "final_payable": str(final_payable)
+                "supplier_total": str(supplier_total),
+                "service_charge_total": str(service_charge_total),
+                "grand_total": str(grand_total),
+                "gst_rate": str(settings.gst_rate)
             },
             user=user
         )

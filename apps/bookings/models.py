@@ -87,8 +87,6 @@ class ServiceType(AuditModel):
     name = models.CharField(max_length=50, unique=True)
     display_order = models.PositiveIntegerField(default=1)
     is_active = models.BooleanField(default=True)
-    is_taxable = models.BooleanField(default=False)
-    default_gst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
 
     class Meta:
         verbose_name = "Service Type"
@@ -115,6 +113,7 @@ class BookingService(AuditModel):
     supplier_cost = models.DecimalField(max_digits=12, decimal_places=2, default=ZERO_AMOUNT)
     discount = models.DecimalField(max_digits=12, decimal_places=2, default=ZERO_AMOUNT)
     service_charge = models.DecimalField(max_digits=12, decimal_places=2, default=ZERO_AMOUNT)
+    is_taxable = models.BooleanField(default=True)
     remarks = models.TextField(blank=True)
 
     class Meta:

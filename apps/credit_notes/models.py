@@ -16,6 +16,11 @@ class CreditNote(AuditModel):
     supplier_refund_received = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     supplier_refund_date = models.DateField(null=True, blank=True)
     
+    taxable_refund = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    cgst_refund = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    sgst_refund = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    igst_refund = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    
     total_credit = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     remaining_credit = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     
@@ -61,13 +66,13 @@ class CreditNoteLine(AuditModel):
     
     description = models.CharField(max_length=255)
     
+    supplier_refund = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    service_charge_refund = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    
     taxable_refund = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
-    cgst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
-    cgst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
-    sgst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
-    sgst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
-    igst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
-    igst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    cgst_refund = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    sgst_refund = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    igst_refund = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     
     total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     
