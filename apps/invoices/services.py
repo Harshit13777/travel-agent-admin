@@ -78,14 +78,11 @@ def generate_invoice(booking: Booking, user=None, applied_credit_notes=None) -> 
                     line_taxable = Decimal("0.00")
                     
                 if settings.gst_enabled:
-                    line_total_gst = (line_taxable * (settings.gst_rate / Decimal("100.00"))).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
                     if settings.gst_type == 'CGST_SGST':
-                        line_cgst = (line_total_gst / Decimal("2.00")).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
-                        line_sgst = (line_total_gst / Decimal("2.00")).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
-                        if line_cgst + line_sgst != line_total_gst:
-                            line_cgst += line_total_gst - (line_cgst + line_sgst)
+                        line_cgst = (line_taxable * (settings.cgst_rate / Decimal("100.00"))).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
+                        line_sgst = (line_taxable * (settings.sgst_rate / Decimal("100.00"))).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
                     elif settings.gst_type == 'IGST':
-                        line_igst = line_total_gst
+                        line_igst = (line_taxable * (settings.igst_rate / Decimal("100.00"))).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
                         
             line_total = (line_supplier + line_service_charge - line_discount + line_cgst + line_sgst + line_igst).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
             
@@ -135,7 +132,9 @@ def generate_invoice(booking: Booking, user=None, applied_credit_notes=None) -> 
             currency=settings.currency,
             gst_enabled=settings.gst_enabled,
             gst_type=settings.gst_type,
-            gst_rate=settings.gst_rate,
+            cgst_rate=settings.cgst_rate,
+            sgst_rate=settings.sgst_rate,
+            igst_rate=settings.igst_rate,
             tax_label_1=settings.tax_label_1,
             tax_label_2=settings.tax_label_2,
             tax_label_3=settings.tax_label_3,

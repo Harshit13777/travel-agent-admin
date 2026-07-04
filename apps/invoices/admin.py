@@ -29,7 +29,7 @@ class InvoiceAdmin(ModelAdmin):
         fields = [
             'invoice_number', 'currency', 'status', 'invoice_date', 'due_date',
             'company_name', 'gstin', 'pan', 'address', 'phone', 'email',
-            'gst_enabled', 'gst_type', 'gst_rate', 'tax_label_1', 'tax_label_2', 'tax_label_3',
+            'gst_enabled', 'gst_type', 'cgst_rate', 'sgst_rate', 'igst_rate', 'tax_label_1', 'tax_label_2', 'tax_label_3',
             'supplier_total', 'service_charge_total', 'subtotal_before_tax', 'taxable_amount', 
             'cgst_amount', 'sgst_amount', 'igst_amount', 
             'grand_total', 'original_total', 'credit_applied', 'final_payable', 'booking'

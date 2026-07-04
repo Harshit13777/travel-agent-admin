@@ -39,8 +39,9 @@ class CompanySettings(AuditModel):
     currency = models.CharField(max_length=10, default="INR")
     gst_enabled = models.BooleanField(default=True)
     gst_type = models.CharField(max_length=50, default='CGST_SGST', choices=[('CGST_SGST', 'CGST + SGST'), ('IGST', 'IGST')])
-    gst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('18.00'))
-    
+    cgst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('9.00'))
+    sgst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('9.00'))
+    igst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('18.00'))
     # Tax Labels
     tax_label_1 = models.CharField(max_length=50, default="CGST")
     tax_label_2 = models.CharField(max_length=50, default="SGST")
