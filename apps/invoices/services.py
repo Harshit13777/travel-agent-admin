@@ -247,42 +247,29 @@ def cancel_invoice(invoice: Invoice, user=None) -> Invoice:
     """
     Cancel an invoice.
     """
-    if invoice.status == InvoiceStatus.CANCELLED:
+    if invoice.status == InvoiceStatus.VOID:
         return invoice
         
     with transaction.atomic():
-        invoice.status = InvoiceStatus.CANCELLED
+        invoice.status = InvoiceStatus.VOID
         invoice.save(update_fields=['status'])
         
         log_booking_history(
             booking=invoice.booking,
             action=BookingHistoryAction.INVOICE_CANCELLED,
-            description=f"Invoice {invoice.invoice_number} was cancelled.",
+            description=f"Invoice {invoice.invoice_number} was voided.",
             metadata={"invoice_id": invoice.id},
             user=user
         )
         return invoice
-
 def update_invoice_status(invoice: Invoice) -> Invoice:
     """
-    Update invoice status based on payments.
+    Update invoice status based on payment_status property.
     This should be called whenever a payment is added or removed.
     """
-    if invoice.status == InvoiceStatus.CANCELLED:
-        return invoice
-        
     with transaction.atomic():
-        paid = invoice.paid_amount
-        total = invoice.final_payable
-        
-        new_status = InvoiceStatus.GENERATED
-        if paid >= total and total > 0:
-            new_status = InvoiceStatus.PAID
-        elif paid > 0:
-            new_status = InvoiceStatus.PARTIALLY_PAID
-            
+        new_status = invoice.payment_status
         if invoice.status != new_status:
             invoice.status = new_status
             invoice.save(update_fields=['status'])
-            
         return invoice

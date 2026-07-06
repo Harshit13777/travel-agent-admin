@@ -1,14 +1,16 @@
 from decimal import Decimal
 from django.db import models
+from django.db.models import Sum
 from apps.common.models import AuditModel
-from apps.bookings.models import Booking, BookingService
-from apps.invoices.choices import InvoiceStatus
+from apps.bookings.models import Booking, BookingService, BookingTraveler
+from apps.invoices.choices import InvoiceStatus, InvoiceCancellationStatus, TravelerType
 
 class Invoice(AuditModel):
     booking = models.OneToOneField(Booking, on_delete=models.PROTECT, related_name='invoice')
     invoice_number = models.CharField(max_length=50, unique=True, db_index=True)
     invoice_date = models.DateField(db_index=True)
     due_date = models.DateField()
+    
     # Company Identity & Settings Config Snapshot
     company_name = models.CharField(max_length=255, default="Travel Agency")
     gstin = models.CharField(max_length=50, blank=True)
@@ -27,7 +29,7 @@ class Invoice(AuditModel):
     tax_label_2 = models.CharField(max_length=50, default="SGST")
     tax_label_3 = models.CharField(max_length=50, default="IGST")
     
-    # Financial Snapshots
+    # Financial Snapshots (immutable after generation)
     supplier_total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     service_charge_total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     subtotal_before_tax = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
@@ -35,13 +37,12 @@ class Invoice(AuditModel):
     cgst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     sgst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     igst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
-    
     grand_total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     original_total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
-    credit_applied = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     final_payable = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     
     status = models.CharField(max_length=50, choices=InvoiceStatus.choices, default=InvoiceStatus.DRAFT, db_index=True)
+    cancellation_status = models.CharField(max_length=50, choices=InvoiceCancellationStatus.choices, default=InvoiceCancellationStatus.NONE, db_index=True)
     remarks = models.TextField(blank=True)
 
     class Meta:
@@ -58,17 +59,27 @@ class Invoice(AuditModel):
         return f"{self.invoice_number} - {self.booking.customer.name}"
         
     @property
-    def paid_amount(self):
-        return sum(payment.amount for payment in self.payments.all())
-        
-    @property
-    def balance_amount(self):
-        return self.final_payable - self.paid_amount
-        
-    @property
-    def is_paid(self):
-        return self.status == InvoiceStatus.PAID
+    def current_invoice_value(self):
+        finalized_refunds = self.cancellations.filter(status='FINALIZED').aggregate(
+            total=Sum('total_refund')
+        )['total'] or Decimal("0.00")
+        return self.final_payable - finalized_refunds
 
+    @property
+    def balance_due(self):
+        payments_sum = sum(p.amount for p in self.payments.all())
+        allocations_sum = sum(a.amount for a in self.credit_allocations.all())
+        return self.current_invoice_value - payments_sum - allocations_sum
+
+    @property
+    def payment_status(self):
+        if self.balance_due <= Decimal('0.00'):
+            return "PAID"
+        payments_sum = sum(p.amount for p in self.payments.all())
+        allocations_sum = sum(a.amount for a in self.credit_allocations.all())
+        if (payments_sum + allocations_sum) > Decimal('0.00'):
+            return "PARTIAL"
+        return "UNPAID"
 
 class InvoiceLine(AuditModel):
     """
@@ -79,7 +90,6 @@ class InvoiceLine(AuditModel):
     booking_service = models.ForeignKey(BookingService, on_delete=models.SET_NULL, null=True, blank=True, related_name='invoice_lines')
     service_type = models.CharField(max_length=100)
     service_provider = models.CharField(max_length=100, blank=True)
-    traveler_count = models.PositiveIntegerField(default=1)
     
     supplier_cost = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     service_charge = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
@@ -87,11 +97,9 @@ class InvoiceLine(AuditModel):
     is_taxable = models.BooleanField(default=True)
     taxable_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     
-    # Line level tax calculations
     cgst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     sgst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     igst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
-    
     total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     
     class Meta:
@@ -106,3 +114,36 @@ class InvoiceLine(AuditModel):
 
     def __str__(self):
         return f"{self.service_type} for {self.invoice.invoice_number}"
+
+class InvoiceLineTraveler(AuditModel):
+    """
+    Every passenger gets their own financial snapshot at the time of invoicing.
+    This eliminates proportional calculations during partial cancellations.
+    """
+    invoice_line = models.ForeignKey(InvoiceLine, on_delete=models.CASCADE, related_name='travelers')
+    booking_traveler = models.ForeignKey(BookingTraveler, on_delete=models.SET_NULL, null=True, blank=True, related_name='invoice_snapshots')
+    traveler_sequence = models.PositiveIntegerField(default=1)
+    traveler_type = models.CharField(max_length=50, choices=TravelerType.choices, default=TravelerType.ADULT)
+    traveler_name = models.CharField(max_length=255)
+    ticket_number = models.CharField(max_length=100, blank=True)
+    
+    currency = models.CharField(max_length=10, default='INR')
+    exchange_rate = models.DecimalField(max_digits=10, decimal_places=4, default=Decimal("1.0000"))
+    
+    supplier_cost = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    service_charge = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    discount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    taxable_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    
+    cgst = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    sgst = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    igst = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+
+    class Meta:
+        verbose_name = "Invoice Line Traveler"
+        verbose_name_plural = "Invoice Line Travelers"
+        ordering = ['invoice_line', 'traveler_sequence']
+
+    def __str__(self):
+        return f"{self.traveler_name} snapshot on {self.invoice_line}"

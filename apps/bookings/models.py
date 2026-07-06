@@ -168,11 +168,6 @@ class BookingTraveler(AuditModel):
     check_in_status = models.CharField(max_length=50, blank=True)
     fare = models.DecimalField(max_digits=10, decimal_places=2, default=ZERO_AMOUNT)
     baggage = models.CharField(max_length=100, blank=True)
-    cancellation_reason = models.TextField(blank=True)
-    
-    cancel_reason = models.TextField(blank=True)
-    cancelled_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='cancelled_travelers')
-    cancelled_at = models.DateTimeField(null=True, blank=True)
 
     def delete(self, *args, **kwargs):
         from django.core.exceptions import ValidationError

@@ -2,7 +2,16 @@ from django.db import models
 
 class InvoiceStatus(models.TextChoices):
     DRAFT = 'DRAFT', 'Draft'
-    GENERATED = 'GENERATED', 'Generated'
-    PARTIALLY_PAID = 'PARTIALLY_PAID', 'Partially Paid'
+    ISSUED = 'ISSUED', 'Issued'
     PAID = 'PAID', 'Paid'
-    CANCELLED = 'CANCELLED', 'Cancelled'
+    VOID = 'VOID', 'Void'
+
+class InvoiceCancellationStatus(models.TextChoices):
+    NONE = 'NONE', 'None'
+    PARTIAL = 'PARTIAL', 'Partial'
+    FULL = 'FULL', 'Full'
+
+class TravelerType(models.TextChoices):
+    ADULT = 'ADULT', 'Adult'
+    CHILD = 'CHILD', 'Child'
+    INFANT = 'INFANT', 'Infant'
