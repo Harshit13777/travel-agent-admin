@@ -73,21 +73,55 @@ class BookingAdmin(ModelAdmin):
     autocomplete_fields = ['customer', 'assigned_to']
     list_select_related = ['customer', 'assigned_to']
     inlines = [BookingServiceInline]
-    actions = [action_confirm_booking, action_generate_invoice]
+    actions = [action_confirm_booking, action_generate_invoice, 'action_cancellation_wizard']
+
+    @admin.action(description="Cancel Passengers or Services (Wizard)")
+    def action_cancellation_wizard(self, request, queryset):
+        from django.shortcuts import redirect
+        from django.contrib import messages
+        
+        if queryset.count() != 1:
+            messages.error(request, "Please select exactly one Booking to initiate cancellation.")
+            return
+            
+        booking = queryset.first()
+        if not hasattr(booking, 'invoice'):
+            messages.error(request, "This booking does not have an Invoice generated yet.")
+            return
+            
+        return redirect('cancellation_wizard', invoice_id=booking.invoice.id)
 
     def get_readonly_fields(self, request, obj=None):
         if obj is None:
             return []
             
-        readonly = ['booking_number', 'locked_at']
+        readonly = ['booking_number', 'locked_at', 'invoice_link']
         if obj.is_locked:
             readonly.extend(['customer', 'booking_source'])
         return readonly
+
+    def invoice_link(self, obj):
+        from django.utils.html import format_html
+        from django.urls import reverse
+        if hasattr(obj, 'invoice'):
+            url = reverse('admin:invoices_invoice_change', args=[obj.invoice.id])
+            return format_html('<a href="{}" style="color: #3b82f6; font-weight: bold;">View Invoice {}</a>', url, obj.invoice.invoice_number)
+        return "No Invoice Generated"
+    invoice_link.short_description = "Related Invoice"
 
     def get_exclude(self, request, obj=None):
         if obj is None:
             return ['booking_number', 'locked_at']
         return []
+
+    def get_inlines(self, request, obj=None):
+        inlines = super().get_inlines(request, obj)
+        if obj and hasattr(obj, 'invoice'):
+            from apps.cancellations.admin import BookingCancellationInlineForBooking
+            if BookingCancellationInlineForBooking not in inlines:
+                # Need to return a new list so we don't modify the class attribute
+                return list(inlines) + [BookingCancellationInlineForBooking]
+        return inlines
 
     def save_model(self, request, obj, form, change):
         if not change:

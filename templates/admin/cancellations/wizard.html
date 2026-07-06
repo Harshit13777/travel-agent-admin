@@ -1,0 +1,94 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls %}
+
+{% block content %}
+<div class="unfold-cancellation-wizard" style="padding: 20px;">
+    
+    <h2>Cancellation Wizard for Invoice: {{ invoice.invoice_number }}</h2>
+    <p>Balance Due: {{ invoice.currency }} {{ invoice.balance_due }}</p>
+
+    {% if messages %}
+    <ul class="messagelist">
+        {% for message in messages %}
+        <li{% if message.tags %} class="{{ message.tags }}"{% endif %} style="padding: 10px; margin-bottom: 10px; background-color: #f8d7da; color: #721c24;">{{ message }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    <div style="margin-top: 30px;">
+        <h3>1. Cancel Passengers</h3>
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
+            <tr style="background-color: #f1f5f9; text-align: left;">
+                <th style="padding: 10px; border: 1px solid #e2e8f0;">Passenger</th>
+                <th style="padding: 10px; border: 1px solid #e2e8f0;">Ticket</th>
+                <th style="padding: 10px; border: 1px solid #e2e8f0;">Service Charge</th>
+                <th style="padding: 10px; border: 1px solid #e2e8f0;">Tax Total</th>
+                <th style="padding: 10px; border: 1px solid #e2e8f0;">Action</th>
+            </tr>
+            {% for t in travelers %}
+            <tr>
+                <td style="padding: 10px; border: 1px solid #e2e8f0;">{{ t.traveler_name }}</td>
+                <td style="padding: 10px; border: 1px solid #e2e8f0;">{{ t.ticket_number }}</td>
+                <td style="padding: 10px; border: 1px solid #e2e8f0;">{{ t.service_charge }}</td>
+                <td style="padding: 10px; border: 1px solid #e2e8f0;">{{ t.cgst|add:t.sgst|add:t.igst }}</td>
+                <td style="padding: 10px; border: 1px solid #e2e8f0;">
+                    {% if t.id in cancelled_traveler_ids %}
+                        <span style="color: red; font-weight: bold;">Already Cancelled</span>
+                    {% else %}
+                        <form method="POST" style="display: flex; gap: 10px; align-items: center;">
+                            {% csrf_token %}
+                            <input type="hidden" name="cancel_type" value="PASSENGER">
+                            <input type="hidden" name="target_id" value="{{ t.id }}">
+                            
+                            <input type="number" step="0.01" name="service_refund" placeholder="Service Refund" style="padding: 5px; width: 120px;" required>
+                            <input type="number" step="0.01" name="cgst_refund" placeholder="CGST Refund" value="0.00" style="padding: 5px; width: 100px;">
+                            <input type="number" step="0.01" name="sgst_refund" placeholder="SGST Refund" value="0.00" style="padding: 5px; width: 100px;">
+                            <input type="text" name="reason" placeholder="Reason" style="padding: 5px; width: 150px;">
+                            
+                            <button type="submit" style="background-color: #ef4444; color: white; padding: 5px 15px; border: none; cursor: pointer; border-radius: 4px;">Cancel Passenger</button>
+                        </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+
+        <h3>2. Cancel Entire Services</h3>
+        <table style="width: 100%; border-collapse: collapse;">
+            <tr style="background-color: #f1f5f9; text-align: left;">
+                <th style="padding: 10px; border: 1px solid #e2e8f0;">Service</th>
+                <th style="padding: 10px; border: 1px solid #e2e8f0;">Provider</th>
+                <th style="padding: 10px; border: 1px solid #e2e8f0;">Service Charge</th>
+                <th style="padding: 10px; border: 1px solid #e2e8f0;">Action</th>
+            </tr>
+            {% for l in lines %}
+            <tr>
+                <td style="padding: 10px; border: 1px solid #e2e8f0;">{{ l.service_type }}</td>
+                <td style="padding: 10px; border: 1px solid #e2e8f0;">{{ l.service_provider }}</td>
+                <td style="padding: 10px; border: 1px solid #e2e8f0;">{{ l.service_charge }}</td>
+                <td style="padding: 10px; border: 1px solid #e2e8f0;">
+                    {% if l.id in cancelled_line_ids %}
+                        <span style="color: red; font-weight: bold;">Already Cancelled</span>
+                    {% else %}
+                        <form method="POST" style="display: flex; gap: 10px; align-items: center;">
+                            {% csrf_token %}
+                            <input type="hidden" name="cancel_type" value="SERVICE">
+                            <input type="hidden" name="target_id" value="{{ l.id }}">
+                            
+                            <input type="number" step="0.01" name="service_refund" placeholder="Service Refund" style="padding: 5px; width: 120px;" required>
+                            <input type="text" name="reason" placeholder="Reason" style="padding: 5px; width: 150px;">
+                            
+                            <button type="submit" style="background-color: #ef4444; color: white; padding: 5px 15px; border: none; cursor: pointer; border-radius: 4px;">Cancel Service</button>
+                        </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+        
+        <div style="margin-top: 30px;">
+            <a href="{% url 'admin:invoices_invoice_change' invoice.id %}" style="text-decoration: none; color: #3b82f6;">&larr; Back to Invoice</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

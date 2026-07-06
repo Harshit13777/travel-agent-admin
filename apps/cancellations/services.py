@@ -59,6 +59,43 @@ class CancellationValidationService:
         if (current_supplier + prev_supplier) > snapshot.supplier_cost:
             raise ValidationError(f"Total supplier refund exceeds snapshot supplier cost of {snapshot.supplier_cost}.")
 
+    @classmethod
+    def validate_settlement_creation(cls, settlement):
+        from decimal import Decimal
+        from django.db.models import Sum
+        from django.core.exceptions import ValidationError
+        
+        if not hasattr(settlement, 'booking_cancellation') or not settlement.booking_cancellation:
+            return
+            
+        cancellation = settlement.booking_cancellation
+        
+        if cancellation.type == 'PASSENGER' and cancellation.invoice_line_traveler:
+            snapshot = cancellation.invoice_line_traveler
+        elif cancellation.type == 'SERVICE' and cancellation.invoice_line:
+            snapshot = cancellation.invoice_line
+        else:
+            return
+            
+        other_settlements = cancellation.settlements.exclude(id=settlement.id)
+        
+        current_supplier_sum = other_settlements.aggregate(t=Sum('settled_supplier_refund'))['t'] or Decimal('0.00')
+        total_supplier_proposed = current_supplier_sum + settlement.settled_supplier_refund
+        
+        current_received_sum = other_settlements.aggregate(t=Sum('received_amount'))['t'] or Decimal('0.00')
+        total_received_proposed = current_received_sum + settlement.received_amount
+        
+        if total_supplier_proposed > snapshot.supplier_cost:
+            max_allowed = snapshot.supplier_cost - current_supplier_sum
+            raise ValidationError({
+                'settled_supplier_refund': f"Total supplier refunds ({total_supplier_proposed}) cannot exceed original supplier cost ({snapshot.supplier_cost}). You can only add up to {max_allowed}."
+            })
+            
+        if total_received_proposed > snapshot.supplier_cost:
+            max_allowed_received = snapshot.supplier_cost - current_received_sum
+            raise ValidationError({
+                'received_amount': f"Total received amounts ({total_received_proposed}) cannot exceed original supplier cost ({snapshot.supplier_cost}). You can only receive up to {max_allowed_received}."
+            })
 
 class CancellationFinalizationService:
     

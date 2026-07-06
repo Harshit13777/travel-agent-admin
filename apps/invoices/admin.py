@@ -56,3 +56,17 @@ class InvoiceAdmin(ModelAdmin):
         
     def has_delete_permission(self, request, obj=None):
         return False
+
+    actions = ['action_cancellation_wizard']
+
+    @admin.action(description="Cancel Passengers or Services (Wizard)")
+    def action_cancellation_wizard(self, request, queryset):
+        from django.shortcuts import redirect
+        from django.contrib import messages
+        
+        if queryset.count() != 1:
+            messages.error(request, "Please select exactly one Invoice to initiate cancellation.")
+            return
+            
+        invoice = queryset.first()
+        return redirect('cancellation_wizard', invoice_id=invoice.id)

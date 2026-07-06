@@ -67,7 +67,7 @@ ROOT_URLCONF = 'tams_project.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -149,6 +149,17 @@ UNFOLD = {
         "show_search": True,
         "show_all_applications": True,
         "navigation": [
+            {
+                "title": "Settings",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Company Settings",
+                        "icon": "settings",
+                        "link": "/admin/common/companysettings/",
+                    },
+                ],
+            },
             {
                 "title": "CRM",
                 "separator": True,

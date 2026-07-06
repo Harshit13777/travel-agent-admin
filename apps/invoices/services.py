@@ -150,20 +150,18 @@ def generate_invoice(booking: Booking, user=None, applied_credit_notes=None) -> 
             
             grand_total=grand_total,
             original_total=grand_total,
-            credit_applied=Decimal("0.00"),
             final_payable=grand_total,
-            status=InvoiceStatus.GENERATED
+            status=InvoiceStatus.ISSUED
         )
         
         # 6. Create Invoice Line Snapshots
         for data in line_data_list:
             service = data['service']
-            InvoiceLine.objects.create(
+            inv_line = InvoiceLine.objects.create(
                 invoice=invoice,
                 booking_service=service,
                 service_type=service.service_type.name,
                 service_provider=service.service_provider,
-                traveler_count=service.booking_travelers.exclude(passenger_status='CANCELLED').count(),
                 supplier_cost=data['supplier_cost'],
                 service_charge=data['service_charge'],
                 discount=data['discount'],
@@ -174,22 +172,42 @@ def generate_invoice(booking: Booking, user=None, applied_credit_notes=None) -> 
                 igst_amount=data['igst_amount'],
                 total=data['total']
             )
+            
+            # Create InvoiceLineTraveler snapshots
+            travelers = service.booking_travelers.exclude(passenger_status='CANCELLED')
+            t_count = travelers.count()
+            if t_count > 0:
+                for idx, t in enumerate(travelers):
+                    from apps.invoices.models import InvoiceLineTraveler
+                    InvoiceLineTraveler.objects.create(
+                        invoice_line=inv_line,
+                        booking_traveler=t,
+                        traveler_sequence=idx + 1,
+                        traveler_name=t.traveler.full_name,
+                        ticket_number=t.ticket_number,
+                        supplier_cost=data['supplier_cost'] / t_count,
+                        service_charge=data['service_charge'] / t_count,
+                        discount=data['discount'] / t_count,
+                        taxable_amount=data['taxable_amount'] / t_count,
+                        cgst=data['cgst_amount'] / t_count,
+                        sgst=data['sgst_amount'] / t_count,
+                        igst=data['igst_amount'] / t_count,
+                        total=data['total'] / t_count
+                    )
         
         # Apply Credit Notes via CreditAllocation
         if applied_credit_notes:
-            from apps.credit_notes.models import CreditAllocation
-            from apps.credit_notes.choices import CreditNoteStatus
+            from apps.credit_notes.services import CreditNoteService
             
             for cn in applied_credit_notes:
-                if cn.booking.customer != booking.customer:
-                    raise ValidationError(f"Credit Note {cn.credit_note_number} belongs to a different customer.")
+                if cn.customer != booking.customer:
+                    raise ValidationError(f"Credit Note {cn.number} belongs to a different customer.")
                 
-                remaining = cn.remaining_credit
+                remaining = cn.remaining_amount
                 if remaining <= 0:
                     continue
                     
-                # We can apply up to the remaining amount on the invoice
-                amount_to_apply = remaining # For MVP, full credit note application or partial if logic dictates.
+                amount_to_apply = remaining
                 
                 if amount_to_apply > (original_total - credit_applied):
                     amount_to_apply = original_total - credit_applied
@@ -199,21 +217,11 @@ def generate_invoice(booking: Booking, user=None, applied_credit_notes=None) -> 
                     
                 credit_applied += amount_to_apply
                 
-                CreditAllocation.objects.create(
-                    credit_note=cn,
-                    invoice=invoice,
+                CreditNoteService.allocate_credit(
+                    credit_note_id=cn.id,
+                    invoice_id=invoice.id,
                     amount=amount_to_apply
                 )
-                
-                # Update Credit Note remaining balance manually
-                cn.remaining_credit -= amount_to_apply
-                
-                if cn.remaining_credit <= 0:
-                    cn.remaining_credit = Decimal("0.00")
-                    cn.status = CreditNoteStatus.FULLY_APPLIED
-                else:
-                    cn.status = CreditNoteStatus.PARTIALLY_APPLIED
-                cn.save(update_fields=['status', 'remaining_credit'])
                 
         # 7. Lock Booking and Update Invoice
         final_payable = grand_total - credit_applied
@@ -223,9 +231,8 @@ def generate_invoice(booking: Booking, user=None, applied_credit_notes=None) -> 
         booking.locked_at = timezone.now()
         booking.save(update_fields=['locked_at'])
         
-        invoice.credit_applied = credit_applied
         invoice.final_payable = final_payable
-        invoice.save(update_fields=['credit_applied', 'final_payable'])
+        invoice.save(update_fields=['final_payable'])
         
         # 8. Audit Trail
         log_booking_history(
@@ -237,7 +244,7 @@ def generate_invoice(booking: Booking, user=None, applied_credit_notes=None) -> 
                 "supplier_total": str(supplier_total),
                 "service_charge_total": str(service_charge_total),
                 "grand_total": str(grand_total),
-                "gst_rate": str(settings.gst_rate)
+                "gst_type": str(settings.gst_type)
             },
             user=user
         )

@@ -8,7 +8,7 @@ from apps.invoices.models import Invoice, InvoiceLine, InvoiceLineTraveler
 from apps.cancellations.choices import CancellationType, CancellationStatus, SettlementStatus
 
 class BookingCancellation(AuditModel):
-    booking = models.ForeignKey(Booking, on_delete=models.PROTECT, related_name='cancellations')
+    booking = models.ForeignKey(Booking, on_delete=models.PROTECT, related_name='cancellations', blank=True)
     invoice = models.ForeignKey(Invoice, on_delete=models.PROTECT, related_name='cancellations')
     invoice_line = models.ForeignKey(InvoiceLine, on_delete=models.PROTECT, related_name='cancellations', null=True, blank=True)
     invoice_line_traveler = models.ForeignKey(InvoiceLineTraveler, on_delete=models.PROTECT, related_name='cancellations', null=True, blank=True)
@@ -41,6 +41,10 @@ class BookingCancellation(AuditModel):
 
     def clean(self):
         from django.core.exceptions import ValidationError
+        
+        if hasattr(self, 'invoice') and self.invoice:
+            self.booking = self.invoice.booking
+            
         if self.type == CancellationType.PASSENGER and not self.invoice_line_traveler:
             raise ValidationError("Passenger cancellations must reference an invoice line traveler.")
         if self.type == CancellationType.SERVICE and not self.invoice_line:
@@ -54,13 +58,27 @@ class BookingCancellation(AuditModel):
 
 class CancellationSettlement(AuditModel):
     booking_cancellation = models.ForeignKey(BookingCancellation, on_delete=models.CASCADE, related_name='settlements')
-    settlement_number = models.CharField(max_length=50, unique=True, db_index=True)
+    settlement_number = models.CharField(max_length=50, unique=True, db_index=True, blank=True)
     supplier = models.CharField(max_length=255, blank=True)
+    
+    def save(self, *args, **kwargs):
+        if not self.settlement_number:
+            from django.utils import timezone
+            import random
+            timestamp = timezone.now().strftime("%Y%m%d%H%M%S")
+            self.settlement_number = f"SET-{timestamp}-{random.randint(100, 999)}"
+        super().save(*args, **kwargs)
     
     currency = models.CharField(max_length=10, default='INR')
     exchange_rate = models.DecimalField(max_digits=10, decimal_places=4, default=Decimal("1.0000"))
     
-    settled_supplier_refund = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    settled_supplier_refund = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2, 
+        default=Decimal("0.00"),
+        verbose_name="Supplier Refund (To Customer)",
+        help_text="This is the supplier refund amount that will be ADDED to the customer's total refund when finalized."
+    )
     received_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     received_currency = models.CharField(max_length=10, default='INR')
     
@@ -78,6 +96,9 @@ class CancellationSettlement(AuditModel):
     class Meta:
         verbose_name = "Cancellation Settlement"
         verbose_name_plural = "Cancellation Settlements"
+
+    def clean(self):
+        pass
 
     def __str__(self):
         return f"Settlement {self.settlement_number} for {self.booking_cancellation}"
