@@ -97,18 +97,8 @@ class CreditAllocationForm(forms.ModelForm):
         if not cn or not invoice or not amount:
             return cleaned_data
             
-        from django.core.exceptions import ValidationError
-        if cn.customer and invoice.booking.customer and cn.customer != invoice.booking.customer:
-            raise ValidationError("The Credit Note and Invoice must belong to the same customer.")
-            
-        if amount <= 0:
-            raise ValidationError("Allocation amount must be greater than zero.")
-            
-        if cn.remaining_amount < amount:
-            raise ValidationError(f"Cannot allocate {amount}. Only {cn.remaining_amount} remains on this credit note.")
-            
-        if invoice.balance_due < amount:
-            raise ValidationError(f"Cannot allocate {amount}. The invoice balance due is only {invoice.balance_due}.")
+        from apps.credit_notes.services import CreditNoteService
+        CreditNoteService.validate_allocation(cn, invoice, amount)
             
         return cleaned_data
 
@@ -122,7 +112,12 @@ class CreditAllocationAdmin(ModelAdmin):
         return False # Immutability
         
     def has_delete_permission(self, request, obj=None):
-        return False # Immutability
+        if obj and obj.invoice:
+            from apps.invoices.choices import InvoiceStatus
+            if obj.invoice.status == InvoiceStatus.CLOSED:
+                return False
+            return True
+        return True # Allow bulk delete UI to show up, we will validate in delete_queryset
         
     def save_model(self, request, obj, form, change):
         from apps.credit_notes.services import CreditNoteService
@@ -134,3 +129,12 @@ class CreditAllocationAdmin(ModelAdmin):
         )
         obj.pk = allocation.pk
         obj.id = allocation.id
+
+    def delete_model(self, request, obj):
+        from apps.credit_notes.services import CreditNoteService
+        CreditNoteService.deallocate_credit(obj.id)
+
+    def delete_queryset(self, request, queryset):
+        from apps.credit_notes.services import CreditNoteService
+        for obj in queryset:
+            CreditNoteService.deallocate_credit(obj.id)

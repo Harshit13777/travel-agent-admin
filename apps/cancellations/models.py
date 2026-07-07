@@ -39,9 +39,7 @@ class BookingCancellation(AuditModel):
     def total_refund(self):
         return self.supplier_refund + self.service_refund + self.cgst_refund + self.sgst_refund + self.igst_refund
 
-    def clean(self):
-        # Additional model-level validation can be added here
-        pass
+
 
     def __str__(self):
         return f"Cancellation for Traveler {self.invoice_line_traveler.id}"

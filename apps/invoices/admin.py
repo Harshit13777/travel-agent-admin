@@ -135,9 +135,16 @@ class InvoiceAdmin(ModelAdmin):
             html += '<div style="padding-left: 20px; margin-top: 4px;">'
             for a in allocations:
                 from django.urls import reverse
+                from apps.invoices.choices import InvoiceStatus
                 cn_url = reverse('admin:credit_notes_creditnote_change', args=[a.credit_note.id])
-                html += f'<div style="display: flex; justify-content: space-between; margin-bottom: 2px;">'
-                html += f'<span><a href="{cn_url}" style="color: #8b5cf6; text-decoration: underline;">{a.credit_note.number}</a>:</span>'
+                del_url = reverse('admin:credit_notes_creditallocation_delete', args=[a.id])
+                
+                del_btn = ""
+                if obj.status != InvoiceStatus.CLOSED:
+                    del_btn = f'<a href="{del_url}" style="color: #ef4444; font-size: 10px; margin-left: 8px; text-decoration: none; border: 1px solid #ef4444; padding: 1px 4px; border-radius: 3px;" title="Deallocate">❌ Remove</a>'
+                    
+                html += f'<div style="display: flex; justify-content: space-between; margin-bottom: 2px; align-items: center;">'
+                html += f'<span><a href="{cn_url}" style="color: #8b5cf6; text-decoration: underline;">{a.credit_note.number}</a> {del_btn}</span>'
                 html += f'<span>- {obj.currency} {a.amount}</span></div>'
             html += '</div></details>'
             
@@ -176,11 +183,13 @@ class InvoiceAdmin(ModelAdmin):
             close_url = reverse('admin:invoices_invoice_close_btn', args=[obj.id])
             buttons_html += f'<a href="{close_url}" style="display: inline-block; background-color: #f59e0b; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-family: sans-serif; font-size: 13px; font-weight: bold;">🔒 Close Invoice (Lock Financials)</a>'
             
-            # Apply Credit Note Button
+            # Apply Credit Note Button & Add Payment Button
             if obj.balance_due > 0:
                 apply_url = reverse('admin:credit_notes_creditallocation_add') + f'?invoice={obj.id}'
                 buttons_html += f'<a href="{apply_url}" style="display: inline-block; background-color: #10b981; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-family: sans-serif; font-size: 13px; font-weight: bold; margin-left: 10px;">💰 Apply Credit Note</a>'
                 
+                payment_url = reverse('admin:payments_payment_add') + f'?invoice={obj.id}'
+                buttons_html += f'<a href="{payment_url}" style="display: inline-block; background-color: #3b82f6; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-family: sans-serif; font-size: 13px; font-weight: bold; margin-left: 10px;">💸 Add Payment</a>'
         elif obj.status == InvoiceStatus.CLOSED:
             # Reopen Button
             reopen_url = reverse('admin:invoices_invoice_reopen_btn', args=[obj.id])

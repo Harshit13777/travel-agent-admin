@@ -32,8 +32,4 @@ class Traveler(AuditModel):
     def __str__(self):
         return f"{self.full_name} ({self.customer.name})"
 
-    def clean(self):
-        if self.dob and self.dob > date.today():
-            raise ValidationError({'dob': 'DOB cannot be in the future.'})
-        if self.passport_issue_date and self.passport_expiry and self.passport_issue_date > self.passport_expiry:
-             raise ValidationError({'passport_issue_date': 'Issue date cannot be after expiry date.'})
+

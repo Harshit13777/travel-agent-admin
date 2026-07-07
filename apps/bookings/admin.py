@@ -130,6 +130,7 @@ def action_confirm_booking(modeladmin, request, queryset):
 
 @admin.action(description="Generate Invoice for selected bookings")
 def action_generate_invoice(modeladmin, request, queryset):
+    from apps.invoices.services import generate_invoice
     for booking in queryset:
         try:
             invoice = generate_invoice(booking, user=request.user)
@@ -175,7 +176,7 @@ class BookingAdmin(ModelAdmin):
         if obj is None:
             return []
             
-        readonly = ['booking_number', 'locked_at', 'invoice_link', 'passenger_list']
+        readonly = ['booking_number', 'locked_at', 'invoice_link', 'passenger_list', 'generate_invoice_button']
         if obj.is_locked:
             readonly.append('customer')
             
@@ -208,6 +209,50 @@ class BookingAdmin(ModelAdmin):
             )
         return "No Invoice Generated"
     invoice_link.short_description = "Related Invoice"
+    
+    def generate_invoice_button(self, obj):
+        if not obj or not obj.pk:
+            return "Save booking first before generating an invoice."
+            
+        from django.utils.html import format_html
+        from django.urls import reverse
+        
+        if hasattr(obj, 'invoice') or obj.is_locked:
+            return "✅ Invoice has been generated."
+            
+        url = reverse('admin:bookings_booking_generate_invoice_btn', args=[obj.id])
+        onclick = "return confirm('Are you sure you want to generate the invoice for this booking? This will lock the booking financials.');"
+        return format_html(
+            '<a href="{}" onclick="{}" style="display: inline-block; background-color: #8b5cf6; color: white; padding: 10px 16px; border-radius: 6px; text-decoration: none; font-family: sans-serif; font-size: 14px; font-weight: bold;">📝 Generate Invoice Now</a>', 
+            url, onclick
+        )
+    generate_invoice_button.short_description = "Generate Invoice"
+    
+    def get_urls(self):
+        from django.urls import path
+        urls = super().get_urls()
+        custom_urls = [
+            path('<path:object_id>/generate-invoice-btn/', self.admin_site.admin_view(self.generate_invoice_button_view), name='bookings_booking_generate_invoice_btn'),
+        ]
+        return custom_urls + urls
+        
+    def generate_invoice_button_view(self, request, object_id):
+        from django.shortcuts import get_object_or_404, redirect
+        from django.contrib import messages
+        from apps.invoices.services import generate_invoice
+        
+        booking = get_object_or_404(Booking, pk=object_id)
+        if booking.is_locked or hasattr(booking, 'invoice'):
+            messages.info(request, "Invoice is already generated.")
+            return redirect('admin:bookings_booking_change', object_id)
+            
+        try:
+            invoice = generate_invoice(booking, user=request.user)
+            messages.success(request, f"Successfully generated Invoice {invoice.invoice_number}!")
+            return redirect('admin:invoices_invoice_change', invoice.id)
+        except Exception as e:
+            messages.error(request, f"Failed to generate invoice: {str(e)}")
+            return redirect('admin:bookings_booking_change', object_id)
 
     def passenger_list(self, obj):
         from apps.bookings.models import BookingTraveler

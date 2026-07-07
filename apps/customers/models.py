@@ -31,14 +31,6 @@ class Customer(AuditModel):
         # Calculated read-only property (will implement logic once financial models are ready)
         return Decimal("0.00")
 
-    def clean(self):
-        if self.credit_limit < Decimal("0.00"):
-            raise ValidationError({'credit_limit': 'Credit limit cannot be negative.'})
-        if self.gst_number and len(self.gst_number) != 15:
-            raise ValidationError({'gst_number': 'GST number must be 15 characters long.'})
-        if self.pan and len(self.pan) != 10:
-            raise ValidationError({'pan': 'PAN must be 10 characters long.'})
-
 
 class Supplier(AuditModel):
     name = models.CharField(max_length=255, db_index=True)

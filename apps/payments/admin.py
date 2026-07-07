@@ -1,9 +1,24 @@
 from django.contrib import admin
 from unfold.admin import ModelAdmin
+from django import forms
 from .models import Payment
+from .services import PaymentService
+
+class PaymentAdminForm(forms.ModelForm):
+    class Meta:
+        model = Payment
+        fields = '__all__'
+
+    def clean(self):
+        cleaned_data = super().clean()
+        invoice = cleaned_data.get('invoice')
+        if invoice:
+            PaymentService.validate_payment(invoice)
+        return cleaned_data
 
 @admin.register(Payment)
 class PaymentAdmin(ModelAdmin):
+    form = PaymentAdminForm
     list_display = ['amount', 'invoice', 'date', 'method', 'received_by']
     search_fields = ['reference_number', 'invoice__invoice_number']
     list_filter = ['method']

@@ -27,9 +27,4 @@ class Payment(AuditModel):
     def __str__(self):
         return f"{self.amount} for {self.invoice.invoice_number}"
 
-    def clean(self):
-        super().clean()
-        from apps.invoices.choices import InvoiceStatus
-        from django.core.exceptions import ValidationError
-        if getattr(self, 'invoice', None) and self.invoice.status == InvoiceStatus.CLOSED:
-            raise ValidationError("Cannot add or edit payments for a CLOSED invoice.")
+
