@@ -7,8 +7,7 @@ from apps.common.constants import ZERO_AMOUNT
 from apps.customers.models import Customer, Supplier
 from apps.travelers.models import Traveler
 from apps.bookings.choices import (
-    BookingStatus, BookingServiceStatus,
-    PassengerStatus, BookingSource, Priority
+    BookingStatus, PassengerStatus, BookingSource, Priority
 )
 
 class Booking(AuditModel):
@@ -21,7 +20,6 @@ class Booking(AuditModel):
     journey_start = models.DateField(null=True, blank=True, db_index=True)
     journey_end = models.DateField(null=True, blank=True)
     expected_payment_date = models.DateField(null=True, blank=True)
-    status = models.CharField(max_length=50, choices=BookingStatus.choices, default=BookingStatus.DRAFT, db_index=True)
     notes = models.TextField(blank=True)
     locked_at = models.DateTimeField(null=True, blank=True)
 
@@ -34,12 +32,32 @@ class Booking(AuditModel):
         return f"{self.booking_number}{title_str} ({self.customer.name})"
 
     @property
+    def status(self):
+        from apps.bookings.choices import BookingStatus, PassengerStatus
+        travelers = self.services.values_list('booking_travelers__passenger_status', flat=True)
+        if not travelers or all(s is None for s in travelers):
+            return BookingStatus.DRAFT
+            
+        statuses = set(s for s in travelers if s is not None)
+        
+        if statuses == {PassengerStatus.CANCELLED}:
+            return BookingStatus.CANCELLED
+        if statuses == {PassengerStatus.COMPLETED}:
+            return BookingStatus.COMPLETED
+        if statuses == {PassengerStatus.PENDING}:
+            return BookingStatus.IN_PROGRESS
+        if PassengerStatus.CANCELLED in statuses:
+            return BookingStatus.PARTIALLY_CANCELLED
+            
+        return BookingStatus.CONFIRMED
+
+    @property
     def total_supplier_cost(self):
-        return sum(service.total_supplier_cost for service in self.services.exclude(status=BookingServiceStatus.CANCELLED))
+        return sum(service.total_supplier_cost for service in self.services.all())
 
     @property
     def total_service_charge(self):
-        return sum(service.total_service_charge for service in self.services.exclude(status=BookingServiceStatus.CANCELLED))
+        return sum(service.total_service_charge for service in self.services.all())
         
     @property
     def has_invoice(self):
@@ -100,7 +118,6 @@ class BookingService(AuditModel):
     to_location = models.CharField(max_length=100, blank=True)
     supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True, related_name='booking_services')
     reference_number = models.CharField(max_length=50, blank=True, db_index=True)
-    status = models.CharField(max_length=50, choices=BookingServiceStatus.choices, default=BookingServiceStatus.PENDING, db_index=True)
     currency = models.CharField(max_length=3, default='INR', editable=False)
     remarks = models.TextField(blank=True)
 

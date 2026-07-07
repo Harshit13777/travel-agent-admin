@@ -5,7 +5,7 @@ from apps.bookings.models import Booking, BookingService, BookingTraveler, Booki
 from apps.credit_notes.models import CreditNote
 
 from apps.invoices.models import Invoice
-from apps.bookings.choices import BookingStatus, BookingServiceStatus, PassengerStatus, BookingHistoryAction
+from apps.bookings.choices import BookingStatus, PassengerStatus, BookingHistoryAction
 from apps.common.number_generator import generate_booking_number, generate_invoice_number, generate_credit_note_number
 
 def log_booking_history(booking, action, user, description="", metadata=None):
@@ -127,8 +127,6 @@ def cancel_service(booking_service: BookingService, user=None, cancel_passengers
     This preserves the financial history without deleting the record.
     """
     with transaction.atomic():
-        booking_service.status = BookingServiceStatus.CANCELLED
-        booking_service.save()
         
         if cancel_passengers:
             for bt in booking_service.booking_travelers.all():
@@ -151,8 +149,6 @@ def cancel_booking(booking: Booking, user=None) -> Booking:
     This preserves the financial history without deleting the record.
     """
     with transaction.atomic():
-        booking.status = BookingStatus.CANCELLED
-        booking.save()
         
         for service in booking.services.all():
             cancel_service(service, user, cancel_passengers=True)
@@ -177,8 +173,6 @@ def confirm_booking(booking: Booking, user=None) -> Booking:
         raise ValidationError("Cannot confirm a booking with no services.")
 
     with transaction.atomic():
-        booking.status = BookingStatus.CONFIRMED
-        booking.save()
         log_booking_history(
             booking=booking,
             action=BookingHistoryAction.BOOKING_CONFIRMED,
@@ -213,10 +207,8 @@ def cancel_passenger_with_credit(traveler: BookingTraveler, data: dict, user=Non
         booking_service = traveler.booking_service
         booking = booking_service.booking
         
-        # Check if booking service should be cancelled
-        if not booking_service.booking_travelers.exclude(passenger_status=PassengerStatus.CANCELLED).exists():
-            booking_service.status = BookingServiceStatus.CANCELLED
-            booking_service.save(update_fields=['status'])
+        # We no longer auto-cancel the Booking or Service here.
+        # It's derived dynamically via @property status.
         
         # We no longer auto-cancel the Booking here.
         

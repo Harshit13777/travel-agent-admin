@@ -4,7 +4,7 @@ from django.utils import timezone
 from apps.invoices.models import Invoice, InvoiceLine, InvoiceLineTraveler
 from apps.invoices.choices import InvoiceStatus
 from apps.bookings.models import Booking, BookingTraveler
-from apps.bookings.choices import BookingStatus, BookingServiceStatus, BookingHistoryAction
+from apps.bookings.choices import BookingStatus, BookingHistoryAction, PassengerStatus
 from apps.common.number_generator import generate_invoice_number
 from apps.bookings.services import log_booking_history
 from apps.common.services import get_company_settings
@@ -40,10 +40,14 @@ def generate_invoice(booking: Booking, user=None, applied_credit_notes=None) -> 
         
     if hasattr(booking, 'invoice'):
         raise ValidationError("An invoice already exists for this booking.")
+        
+    # Check for any pending passengers
+    if BookingTraveler.objects.filter(booking_service__booking=booking, passenger_status=PassengerStatus.PENDING).exists():
+        raise ValidationError("Cannot generate invoice while there are passengers with PENDING status.")
     
     with transaction.atomic():
-        # 1. Load active services
-        services = booking.services.exclude(status=BookingServiceStatus.CANCELLED)
+        # 1. Load all services (we filter out cancelled travelers later)
+        services = booking.services.all()
         if not services:
             raise ValidationError("No active services to invoice.")
             

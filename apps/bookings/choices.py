@@ -4,23 +4,20 @@ class BookingStatus(models.TextChoices):
     DRAFT = 'DRAFT', 'Draft'
     IN_PROGRESS = 'IN_PROGRESS', 'In Progress'
     CONFIRMED = 'CONFIRMED', 'Confirmed'
+    PARTIALLY_CANCELLED = 'PARTIALLY_CANCELLED', 'Partially Cancelled'
     COMPLETED = 'COMPLETED', 'Completed'
     CANCELLED = 'CANCELLED', 'Cancelled'
-
-class BookingServiceStatus(models.TextChoices):
-    PENDING = 'PENDING', 'Pending'
-    CONFIRMED = 'CONFIRMED', 'Confirmed'
-    CANCELLED = 'CANCELLED', 'Cancelled'
-    COMPLETED = 'COMPLETED', 'Completed'
 
 class PassengerStatus(models.TextChoices):
     PENDING = 'PENDING', 'Pending'
+    WAITLIST = 'WAITLIST', 'Waitlist'
     CONFIRMED = 'CONFIRMED', 'Confirmed'
-    WAITING = 'WAITING', 'Waiting'
-    CANCELLED = 'CANCELLED', 'Cancelled'
+    TICKETED = 'TICKETED', 'Ticketed'
     CHECKED_IN = 'CHECKED_IN', 'Checked In'
     BOARDED = 'BOARDED', 'Boarded'
     COMPLETED = 'COMPLETED', 'Completed'
+    CANCELLED = 'CANCELLED', 'Cancelled'
+    NO_SHOW = 'NO_SHOW', 'No Show'
 
 class BookingSource(models.TextChoices):
     WALK_IN = 'WALK_IN', 'Walk In'

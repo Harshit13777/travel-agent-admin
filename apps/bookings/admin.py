@@ -9,10 +9,31 @@ class BookingServiceInline(TabularInline):
     exclude = ['display_order']
 
     def get_readonly_fields(self, request, obj=None):
-        fields = ['total_supplier_cost', 'total_service_charge', 'currency']
+        fields = ['passengers_summary', 'total_supplier_cost', 'total_service_charge', 'currency']
         if obj and obj.is_locked:
             fields.append('service_type')
         return fields
+
+    def passengers_summary(self, obj):
+        if not obj.pk:
+            return "Save to add passengers"
+        from django.utils.html import format_html
+        from django.urls import reverse
+        travelers = obj.booking_travelers.all()
+        names = [str(t.traveler.full_name) for t in travelers]
+        
+        url = reverse('admin:bookings_bookingservice_change', args=[obj.id])
+        link = format_html('<a href="{}" style="color: #3b82f6; font-weight: bold;">Edit Passengers</a>', url)
+        
+        if not names:
+            return format_html('0 Passengers - {}', link)
+        
+        display_names = ", ".join(names[:2])
+        if len(names) > 2:
+            display_names += f" (+{len(names)-2})"
+            
+        return format_html('{} <br/> {}', display_names, link)
+    passengers_summary.short_description = "Passengers"
         
     def has_add_permission(self, request, obj=None):
         if obj and obj.is_locked:
@@ -71,7 +92,7 @@ def action_generate_invoice(modeladmin, request, queryset):
 class BookingAdmin(ModelAdmin):
     list_display = ['booking_number', 'title', 'customer', 'passenger_list', 'status', 'priority']
     search_fields = ['booking_number', 'title', 'customer__name']
-    list_filter = ['status', 'priority', 'booking_source']
+    list_filter = ['priority', 'booking_source']
     autocomplete_fields = ['customer', 'assigned_to']
     list_select_related = ['customer', 'assigned_to']
     inlines = [BookingServiceInline]
@@ -113,8 +134,8 @@ class BookingAdmin(ModelAdmin):
 
     def passenger_list(self, obj):
         from apps.bookings.models import BookingTraveler
-        travelers = BookingTraveler.objects.filter(booking_service__booking=obj).values_list('traveler__first_name', 'traveler__last_name').distinct()
-        names = [f"{t[0]} {t[1]}".strip() for t in travelers]
+        travelers = BookingTraveler.objects.filter(booking_service__booking=obj).values_list('traveler__full_name', flat=True).distinct()
+        names = [str(t).strip() for t in travelers if t]
         if not names:
             return "No Passengers"
         if len(names) > 3:
@@ -155,12 +176,12 @@ class ServiceTypeAdmin(ModelAdmin):
 
 @admin.register(BookingService)
 class BookingServiceAdmin(ModelAdmin):
-    list_display = ['booking', 'service_type', 'status', 'total_service_charge']
+    list_display = ['booking', 'service_type', 'total_service_charge']
     list_select_related = ['booking', 'service_type', 'supplier']
     autocomplete_fields = ['booking', 'service_type', 'supplier']
     search_fields = ['booking__booking_number', 'reference_number']
     inlines = [BookingTravelerInline]
-    list_filter = ['status', 'service_type']
+    list_filter = ['service_type']
     exclude = ['display_order']
 
     def get_readonly_fields(self, request, obj=None):
