@@ -3,6 +3,7 @@ from django.db import transaction
 from django.core.exceptions import ValidationError
 from apps.credit_notes.models import CreditNote, CreditAllocation
 from apps.invoices.models import Invoice
+from apps.invoices.choices import InvoiceStatus
 
 class CreditNoteService:
     
@@ -45,3 +46,37 @@ class CreditNoteService:
         update_invoice_status(invoice)
         
         return allocation
+
+    @classmethod
+    @transaction.atomic
+    def generate_from_overpayment(cls, invoice, user):
+        """
+        Generates a Credit Note from a negative balance on a CLOSED invoice.
+        """
+        if invoice.status != InvoiceStatus.CLOSED:
+            raise ValidationError("Invoice must be CLOSED before generating a Credit Note.")
+            
+        if invoice.balance_due >= 0:
+            raise ValidationError("Invoice does not have a negative balance (overpayment).")
+            
+        amount = abs(invoice.balance_due)
+        
+        # Determine Source
+        source = 'OVERPAYMENT'
+        
+        cn = CreditNote.objects.create(
+            customer=invoice.booking.customer,
+            invoice=invoice,
+            source=source,
+            amount=amount,
+            issued_by=user,
+            reason=f"Generated from overpayment on {invoice.invoice_number}",
+            status='ACTIVE'
+        )
+        
+        # Generate number if not generated yet (assuming signals handle this or we can generate it)
+        if not cn.number:
+            cn.number = f"CN-{cn.id:04d}"
+            cn.save(update_fields=['number'])
+            
+        return cn

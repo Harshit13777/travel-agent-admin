@@ -116,6 +116,12 @@ class InvoiceAdmin(ModelAdmin):
             html += f'<span style="padding-left: 12px;">Credit Note Applied ({a.credit_note.number}):</span>'
             html += f'<span>- {obj.currency} {a.amount}</span></div>'
             
+        # 5. Generated Credit Notes
+        for cn in obj.issued_credit_notes.filter(status='ACTIVE'):
+            html += f'<div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #f59e0b; font-size: 13px;">'
+            html += f'<span style="padding-left: 12px;">Credit Note Generated ({cn.number}):</span>'
+            html += f'<span>+ {obj.currency} {cn.amount}</span></div>'
+            
         # Divider
         html += '<div style="border-top: 1px dashed #d1d5db; margin: 12px 0;"></div>'
         
@@ -133,11 +139,56 @@ class InvoiceAdmin(ModelAdmin):
     def has_add_permission(self, request):
         return False
         
+    def has_change_permission(self, request, obj=None):
+        from apps.invoices.choices import InvoiceStatus
+        if obj and obj.status == InvoiceStatus.CLOSED:
+            return False
+        return True
+
     def has_delete_permission(self, request, obj=None):
         return False
 
-    actions = ['action_cancellation_wizard']
+    actions = ['action_cancellation_wizard', 'action_close_invoice', 'action_generate_credit_note']
 
+    @admin.action(description="Close Invoice (Lock Financials)")
+    def action_close_invoice(self, request, queryset):
+        from django.contrib import messages
+        from apps.invoices.choices import InvoiceStatus
+        count = 0
+        for inv in queryset:
+            if inv.status != InvoiceStatus.CLOSED:
+                inv.status = InvoiceStatus.CLOSED
+                inv.save(update_fields=['status'])
+                count += 1
+        messages.success(request, f"{count} invoice(s) closed and financially locked.")
+
+    @admin.action(description="Generate Credit Note from Overpayment")
+    def action_generate_credit_note(self, request, queryset):
+        from django.shortcuts import redirect
+        from django.contrib import messages
+        from apps.credit_notes.services import CreditNoteService
+        
+        if queryset.count() != 1:
+            messages.error(request, "Please select exactly one Invoice.")
+            return
+            
+        invoice = queryset.first()
+        from apps.invoices.choices import InvoiceStatus
+        if invoice.status != InvoiceStatus.CLOSED:
+            messages.error(request, "Invoice must be CLOSED before generating a Credit Note.")
+            return
+            
+        if invoice.balance_due >= 0:
+            messages.error(request, "Invoice does not have a negative balance.")
+            return
+            
+        try:
+            cn = CreditNoteService.generate_from_overpayment(invoice, request.user)
+            messages.success(request, f"Credit Note {cn.number} generated successfully.")
+            return redirect('admin:credit_notes_creditnote_change', cn.id)
+        except Exception as e:
+            messages.error(request, str(e))
+            
     @admin.action(description="Cancel Passengers or Services (Wizard)")
     def action_cancellation_wizard(self, request, queryset):
         from django.shortcuts import redirect

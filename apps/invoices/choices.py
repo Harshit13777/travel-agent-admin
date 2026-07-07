@@ -3,7 +3,7 @@ from django.db import models
 class InvoiceStatus(models.TextChoices):
     DRAFT = 'DRAFT', 'Draft'
     ISSUED = 'ISSUED', 'Issued'
-    PAID = 'PAID', 'Paid'
+    CLOSED = 'CLOSED', 'Closed'
     VOID = 'VOID', 'Void'
 
 class InvoiceCancellationStatus(models.TextChoices):

@@ -153,6 +153,9 @@ class BookingCancellationAdmin(ModelAdmin):
         }
         
         try:
+            if obj.invoice_line_traveler.invoice_line.invoice.status == 'CLOSED':
+                raise ValidationError("Cannot add or edit cancellations for a CLOSED invoice.")
+                
             if not change:
                 cancellations = CancellationService.cancel_passengers(
                     travelers=[obj.invoice_line_traveler],
@@ -187,3 +190,16 @@ class BookingCancellationAdmin(ModelAdmin):
         if obj:
             base_readonly.append('invoice_line_traveler')
         return base_readonly
+
+    def has_add_permission(self, request):
+        return True # Handled in form clean or save_model
+        
+    def has_change_permission(self, request, obj=None):
+        if obj and obj.invoice_line_traveler.invoice_line.invoice.status == 'CLOSED':
+            return False
+        return True
+        
+    def has_delete_permission(self, request, obj=None):
+        if obj and obj.invoice_line_traveler.invoice_line.invoice.status == 'CLOSED':
+            return False
+        return True

@@ -61,6 +61,10 @@ class CancellationService:
         invoice_id = travelers[0].invoice_line.invoice_id
         invoice = Invoice.objects.select_for_update().get(id=invoice_id)
         
+        from apps.invoices.choices import InvoiceStatus
+        if invoice.status == InvoiceStatus.CLOSED:
+            raise ValidationError("Cannot cancel passengers for a CLOSED invoice.")
+        
         # Ensure all travelers belong to the same locked invoice
         for traveler in travelers:
             if traveler.invoice_line.invoice_id != invoice.id:
@@ -112,6 +116,10 @@ class CancellationService:
         # Validate using the central validation service
         CancellationValidationService.validate_components([cancellation.invoice_line_traveler], refund_data)
         
+        from apps.invoices.choices import InvoiceStatus
+        if cancellation.invoice_line_traveler.invoice_line.invoice.status == InvoiceStatus.CLOSED:
+            raise ValidationError("Cannot update cancellations for a CLOSED invoice.")
+            
         data = refund_data.get(cancellation.invoice_line_traveler_id, {})
         cancellation.supplier_refund = data.get('supplier_refund', cancellation.supplier_refund)
         cancellation.service_refund = data.get('service_refund', cancellation.service_refund)

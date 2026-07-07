@@ -86,7 +86,8 @@ class Invoice(AuditModel):
     def balance_due(self):
         payments_sum = sum(p.amount for p in self.payments.all())
         allocations_sum = sum(a.amount for a in self.credit_allocations.all())
-        return self.current_invoice_value - payments_sum - allocations_sum
+        generated_credit_notes_sum = sum(cn.amount for cn in self.issued_credit_notes.filter(status='ACTIVE'))
+        return self.current_invoice_value - payments_sum - allocations_sum + generated_credit_notes_sum
 
     @property
     def payment_status(self):
@@ -94,7 +95,9 @@ class Invoice(AuditModel):
             return "PAID"
         payments_sum = sum(p.amount for p in self.payments.all())
         allocations_sum = sum(a.amount for a in self.credit_allocations.all())
-        if (payments_sum + allocations_sum) > Decimal('0.00'):
+        generated_credit_notes_sum = sum(cn.amount for cn in self.issued_credit_notes.filter(status='ACTIVE'))
+        
+        if (payments_sum + allocations_sum + generated_credit_notes_sum) > Decimal('0.00'):
             return "PARTIAL"
         return "UNPAID"
 
