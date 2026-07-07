@@ -3,6 +3,7 @@ from django.db import transaction
 from django.core.exceptions import ValidationError
 from apps.credit_notes.models import CreditNote, CreditAllocation
 from apps.invoices.models import Invoice
+from apps.credit_notes.choices import CreditNoteStatus, CreditNoteSource
 from apps.invoices.choices import InvoiceStatus
 
 class CreditNoteService:
@@ -46,9 +47,9 @@ class CreditNoteService:
         # Update credit note
         credit_note.allocated_amount += amount
         if credit_note.allocated_amount >= credit_note.amount:
-            credit_note.status = 'FULLY_APPLIED'
+            credit_note.status = CreditNoteStatus.FULLY_APPLIED
         else:
-            credit_note.status = 'PARTIALLY_APPLIED'
+            credit_note.status = CreditNoteStatus.PARTIALLY_APPLIED
         credit_note.save(update_fields=['allocated_amount', 'status'])
         
         # Update invoice payment status using central service if necessary,
@@ -78,14 +79,56 @@ class CreditNoteService:
         # Update credit note
         credit_note.allocated_amount -= amount
         if credit_note.allocated_amount <= Decimal("0.00"):
-            credit_note.status = 'ACTIVE'
+            credit_note.status = CreditNoteStatus.ACTIVE
         else:
-            credit_note.status = 'PARTIALLY_APPLIED'
+            credit_note.status = CreditNoteStatus.PARTIALLY_APPLIED
         credit_note.save(update_fields=['allocated_amount', 'status'])
         
         # Trigger invoice update
         from apps.invoices.services import update_invoice_status
         update_invoice_status(invoice)
+
+    @classmethod
+    @transaction.atomic
+    def update_allocation(cls, allocation_id: int, new_amount: Decimal):
+        """
+        Updates an existing allocation.
+        It refunds the old amount, and then allocates the new amount.
+        """
+        allocation = CreditAllocation.objects.select_for_update().get(id=allocation_id)
+        credit_note = CreditNote.objects.select_for_update().get(id=allocation.credit_note_id)
+        invoice = Invoice.objects.select_for_update().get(id=allocation.invoice_id)
+        
+        if invoice.status == InvoiceStatus.CLOSED:
+            raise ValidationError("Cannot edit credit allocation on a CLOSED invoice.")
+            
+        old_amount = allocation.amount
+        
+        if new_amount <= Decimal("0.00"):
+            raise ValidationError("Allocation amount must be greater than zero.")
+            
+        if new_amount > (credit_note.amount - credit_note.allocated_amount + old_amount):
+            raise ValidationError("Credit Note does not have enough remaining balance.")
+            
+        # Refund old amount
+        credit_note.allocated_amount -= old_amount
+        
+        # Apply new amount
+        credit_note.allocated_amount += new_amount
+        allocation.amount = new_amount
+        allocation.save(update_fields=['amount'])
+        
+        if credit_note.allocated_amount >= credit_note.amount:
+            credit_note.status = CreditNoteStatus.FULLY_APPLIED
+        elif credit_note.allocated_amount <= Decimal("0.00"):
+            credit_note.status = CreditNoteStatus.ACTIVE
+        else:
+            credit_note.status = CreditNoteStatus.PARTIALLY_APPLIED
+        credit_note.save(update_fields=['allocated_amount', 'status'])
+        
+        from apps.invoices.services import update_invoice_status
+        update_invoice_status(invoice)
+        return allocation
 
 
     @classmethod
@@ -100,10 +143,13 @@ class CreditNoteService:
         if invoice.balance_due >= 0:
             raise ValidationError("Invoice does not have a negative balance (overpayment).")
             
+        if invoice.credit_allocations.exists():
+            raise ValidationError("Cannot generate a new credit note because you have active Credit Note Allocations applied to this invoice. Please reduce or remove the applied allocations instead to balance the invoice.")
+            
         amount = abs(invoice.balance_due)
         
         # Determine Source
-        source = 'OVERPAYMENT'
+        source = CreditNoteSource.OVERPAYMENT
         
         cn = CreditNote.objects.create(
             customer=invoice.booking.customer,
@@ -112,7 +158,7 @@ class CreditNoteService:
             amount=amount,
             issued_by=user,
             reason=f"Generated from overpayment on {invoice.invoice_number}",
-            status='ACTIVE'
+            status=CreditNoteStatus.ACTIVE
         )
         
         # Generate number if not generated yet (assuming signals handle this or we can generate it)

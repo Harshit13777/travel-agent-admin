@@ -227,11 +227,15 @@ class BookingCancellationAdmin(ModelAdmin):
         return super().response_delete(request, obj_display, obj_id)
         
     def has_change_permission(self, request, obj=None):
-        if obj and obj.invoice_line_traveler.invoice_line.invoice.status == 'CLOSED':
-            return False
+        if obj:
+            from apps.invoices.choices import InvoiceStatus
+            if obj.invoice_line_traveler.invoice_line.invoice.status == InvoiceStatus.CLOSED:
+                return False
         return True
         
     def has_delete_permission(self, request, obj=None):
-        if obj and obj.invoice_line_traveler.invoice_line.invoice.status == 'CLOSED':
-            return False
+        if obj:
+            from apps.invoices.choices import InvoiceStatus
+            if obj.invoice_line_traveler.invoice_line.invoice.status == InvoiceStatus.CLOSED:
+                return False
         return True

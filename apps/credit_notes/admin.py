@@ -109,7 +109,11 @@ class CreditAllocationAdmin(ModelAdmin):
     autocomplete_fields = ['credit_note', 'invoice']
     
     def has_change_permission(self, request, obj=None):
-        return False # Immutability
+        if obj and obj.invoice:
+            from apps.invoices.choices import InvoiceStatus
+            if obj.invoice.status == InvoiceStatus.CLOSED:
+                return False
+        return True
         
     def has_delete_permission(self, request, obj=None):
         if obj and obj.invoice:
@@ -122,11 +126,17 @@ class CreditAllocationAdmin(ModelAdmin):
     def save_model(self, request, obj, form, change):
         from apps.credit_notes.services import CreditNoteService
         # Route through the Service Layer instead of saving directly
-        allocation = CreditNoteService.allocate_credit(
-            credit_note_id=obj.credit_note.id,
-            invoice_id=obj.invoice.id,
-            amount=obj.amount
-        )
+        if change:
+            allocation = CreditNoteService.update_allocation(
+                allocation_id=obj.id,
+                new_amount=obj.amount
+            )
+        else:
+            allocation = CreditNoteService.allocate_credit(
+                credit_note_id=obj.credit_note.id,
+                invoice_id=obj.invoice.id,
+                amount=obj.amount
+            )
         obj.pk = allocation.pk
         obj.id = allocation.id
 
