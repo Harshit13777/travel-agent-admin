@@ -33,7 +33,7 @@ class InvoiceLineInline(TabularInline):
 @admin.register(Invoice)
 class InvoiceAdmin(ModelAdmin):
     list_display = ['invoice_number', 'booking', 'invoice_date', 'final_payable', 'current_invoice_value', 'balance_due', 'payment_status', 'cancellation_status', 'status']
-    search_fields = ['invoice_number', 'booking__booking_number', 'booking__customer__name']
+    search_fields = ['invoice_number', 'booking__booking_number', 'booking__customer__name', 'booking__customer__email', 'booking__customer__phone']
     list_filter = ['status', 'cancellation_status', 'invoice_date']
     autocomplete_fields = ['booking']
     list_select_related = ['booking', 'booking__customer']
@@ -97,30 +97,65 @@ class InvoiceAdmin(ModelAdmin):
         
         # 2. Cancellations
         cancellations = BookingCancellation.objects.filter(invoice_line_traveler__invoice_line__invoice=obj)
-        for c in cancellations:
-            html += f'<div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #ef4444; font-size: 13px;">'
-            html += f'<span style="padding-left: 12px;">Refund (Traveler {c.invoice_line_traveler.traveler_name}):</span>'
-            html += f'<span>- {obj.currency} {c.total_refund}</span></div>'
+        if cancellations.exists():
+            total_cancel = sum(c.total_refund for c in cancellations)
+            html += f'<details style="margin-bottom: 8px; color: #ef4444; font-size: 13px;">'
+            html += f'<summary style="display: flex; justify-content: space-between; cursor: pointer; outline: none;">'
+            html += f'<strong>Cancellations/Refunds</strong><span>- {obj.currency} {total_cancel}</span></summary>'
+            html += '<div style="padding-left: 20px; margin-top: 4px;">'
+            for c in cancellations:
+                html += f'<div style="display: flex; justify-content: space-between; margin-bottom: 2px;">'
+                html += f'<span>Traveler {c.invoice_line_traveler.traveler_name}:</span>'
+                html += f'<span>- {obj.currency} {c.total_refund}</span></div>'
+            html += '</div></details>'
             
         # 3. Payments
-        for p in obj.payments.all():
-            from django.urls import reverse
-            payment_url = reverse('admin:payments_payment_change', args=[p.id])
-            html += f'<div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #10b981; font-size: 13px;">'
-            html += f'<span style="padding-left: 12px;"><a href="{payment_url}" style="color: #10b981; text-decoration: underline;">Payment</a> ({p.date} - {p.get_method_display()}):</span>'
-            html += f'<span>- {obj.currency} {p.amount}</span></div>'
+        payments = obj.payments.all()
+        if payments.exists():
+            total_pay = sum(p.amount for p in payments)
+            html += f'<details style="margin-bottom: 8px; color: #10b981; font-size: 13px;">'
+            html += f'<summary style="display: flex; justify-content: space-between; cursor: pointer; outline: none;">'
+            html += f'<strong>Payments Received</strong><span>- {obj.currency} {total_pay}</span></summary>'
+            html += '<div style="padding-left: 20px; margin-top: 4px;">'
+            for p in payments:
+                from django.urls import reverse
+                payment_url = reverse('admin:payments_payment_change', args=[p.id])
+                html += f'<div style="display: flex; justify-content: space-between; margin-bottom: 2px;">'
+                html += f'<span><a href="{payment_url}" style="color: #10b981; text-decoration: underline;">{p.date} - {p.get_method_display()}</a>:</span>'
+                html += f'<span>- {obj.currency} {p.amount}</span></div>'
+            html += '</div></details>'
             
         # 4. Credit Allocations
-        for a in obj.credit_allocations.all():
-            html += f'<div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #8b5cf6; font-size: 13px;">'
-            html += f'<span style="padding-left: 12px;">Credit Note Applied ({a.credit_note.number}):</span>'
-            html += f'<span>- {obj.currency} {a.amount}</span></div>'
+        allocations = obj.credit_allocations.all()
+        if allocations.exists():
+            total_alloc = sum(a.amount for a in allocations)
+            html += f'<details style="margin-bottom: 8px; color: #8b5cf6; font-size: 13px;">'
+            html += f'<summary style="display: flex; justify-content: space-between; cursor: pointer; outline: none;">'
+            html += f'<strong>Credit Notes Applied</strong><span>- {obj.currency} {total_alloc}</span></summary>'
+            html += '<div style="padding-left: 20px; margin-top: 4px;">'
+            for a in allocations:
+                from django.urls import reverse
+                cn_url = reverse('admin:credit_notes_creditnote_change', args=[a.credit_note.id])
+                html += f'<div style="display: flex; justify-content: space-between; margin-bottom: 2px;">'
+                html += f'<span><a href="{cn_url}" style="color: #8b5cf6; text-decoration: underline;">{a.credit_note.number}</a>:</span>'
+                html += f'<span>- {obj.currency} {a.amount}</span></div>'
+            html += '</div></details>'
             
         # 5. Generated Credit Notes
-        for cn in obj.issued_credit_notes.filter(status='ACTIVE'):
-            html += f'<div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #f59e0b; font-size: 13px;">'
-            html += f'<span style="padding-left: 12px;">Credit Note Generated ({cn.number}):</span>'
-            html += f'<span>+ {obj.currency} {cn.amount}</span></div>'
+        issued_cns = obj.issued_credit_notes.filter(status='ACTIVE')
+        if issued_cns.exists():
+            total_issued = sum(cn.amount for cn in issued_cns)
+            html += f'<details style="margin-bottom: 8px; color: #f59e0b; font-size: 13px;">'
+            html += f'<summary style="display: flex; justify-content: space-between; cursor: pointer; outline: none;">'
+            html += f'<strong>Credit Notes Generated</strong><span>+ {obj.currency} {total_issued}</span></summary>'
+            html += '<div style="padding-left: 20px; margin-top: 4px;">'
+            for cn in issued_cns:
+                from django.urls import reverse
+                cn_url = reverse('admin:credit_notes_creditnote_change', args=[cn.id])
+                html += f'<div style="display: flex; justify-content: space-between; margin-bottom: 2px;">'
+                html += f'<span><a href="{cn_url}" style="color: #f59e0b; text-decoration: underline;">{cn.number}</a>:</span>'
+                html += f'<span>+ {obj.currency} {cn.amount}</span></div>'
+            html += '</div></details>'
             
         # Divider
         html += '<div style="border-top: 1px dashed #d1d5db; margin: 12px 0;"></div>'
@@ -140,10 +175,26 @@ class InvoiceAdmin(ModelAdmin):
         if obj.status != InvoiceStatus.CLOSED:
             close_url = reverse('admin:invoices_invoice_close_btn', args=[obj.id])
             buttons_html += f'<a href="{close_url}" style="display: inline-block; background-color: #f59e0b; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-family: sans-serif; font-size: 13px; font-weight: bold;">🔒 Close Invoice (Lock Financials)</a>'
+            
+            # Apply Credit Note Button
+            if obj.balance_due > 0:
+                apply_url = reverse('admin:credit_notes_creditallocation_add') + f'?invoice={obj.id}'
+                buttons_html += f'<a href="{apply_url}" style="display: inline-block; background-color: #10b981; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-family: sans-serif; font-size: 13px; font-weight: bold; margin-left: 10px;">💰 Apply Credit Note</a>'
+                
         elif obj.status == InvoiceStatus.CLOSED:
             # Reopen Button
             reopen_url = reverse('admin:invoices_invoice_reopen_btn', args=[obj.id])
-            buttons_html += f'<a href="{reopen_url}" style="display: inline-block; background-color: #3b82f6; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-family: sans-serif; font-size: 13px; font-weight: bold;">🔓 Re-open Invoice</a>'
+            
+            active_cns = obj.issued_credit_notes.filter(status='ACTIVE')
+            if active_cns.exists():
+                if any(cn.allocated_amount > 0 for cn in active_cns):
+                    onclick = "return confirm('Warning: Credit Notes generated by this invoice have already been allocated. You must remove those allocations first before you can re-open. Proceed anyway?');"
+                else:
+                    onclick = f"return confirm('WARNING: Re-opening this invoice will PERMANENTLY DELETE {active_cns.count()} unallocated Credit Note(s) generated by it. Are you sure you want to proceed?');"
+            else:
+                onclick = "return confirm('Are you sure you want to re-open this invoice and unlock its financials?');"
+                
+            buttons_html += f'<a href="{reopen_url}" onclick="{onclick}" style="display: inline-block; background-color: #3b82f6; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-family: sans-serif; font-size: 13px; font-weight: bold;">🔓 Re-open Invoice</a>'
             
             # Credit Note Button (if negative balance)
             if obj.balance_due < 0:
@@ -203,9 +254,15 @@ class InvoiceAdmin(ModelAdmin):
         
         invoice = get_object_or_404(Invoice, pk=object_id)
         
-        if invoice.issued_credit_notes.filter(status='ACTIVE').exists():
-            messages.error(request, "Cannot re-open: This invoice has generated Credit Notes. Please VOID the Credit Note(s) first before re-opening.")
-            return redirect('admin:invoices_invoice_change', object_id)
+        active_cns = invoice.issued_credit_notes.filter(status='ACTIVE')
+        if active_cns.exists():
+            if any(cn.allocated_amount > 0 for cn in active_cns):
+                messages.error(request, "Cannot re-open: This invoice has generated Credit Notes that have already been allocated. Please remove their allocations first.")
+                return redirect('admin:invoices_invoice_change', object_id)
+            else:
+                count = active_cns.count()
+                active_cns.delete()
+                messages.warning(request, f"Automatically deleted {count} unallocated Credit Note(s) previously generated by this invoice.")
             
         if invoice.status == InvoiceStatus.CLOSED:
             invoice.status = InvoiceStatus.ISSUED

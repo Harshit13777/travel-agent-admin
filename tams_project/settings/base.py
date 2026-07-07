@@ -222,6 +222,11 @@ UNFOLD = {
                         "link": "/admin/credit_notes/creditnote/",
                     },
                     {
+                        "title": "Credit Allocations",
+                        "icon": "payments",
+                        "link": "/admin/credit_notes/creditallocation/",
+                    },
+                    {
                         "title": "Cancellations",
                         "icon": "cancel",
                         "link": "/admin/cancellations/bookingcancellation/",

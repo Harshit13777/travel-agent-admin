@@ -43,7 +43,8 @@ class CreditNote(AuditModel):
         ]
 
     def __str__(self):
-        return f"{self.number} - {self.customer.name}"
+        customer_name = self.customer.name if self.customer else "Unknown Customer"
+        return f"{self.number} - {customer_name} (Available: {self.remaining_amount})"
         
     @property
     def remaining_amount(self):

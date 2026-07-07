@@ -56,7 +56,7 @@ class Invoice(AuditModel):
         ]
 
     def __str__(self):
-        return f"{self.invoice_number} - {self.booking.customer.name} ({self.currency} {self.final_payable})"
+        return f"{self.invoice_number} - {self.booking.customer.name} (Balance Due: {self.currency} {self.balance_due})"
         
     @property
     def current_invoice_value(self):
