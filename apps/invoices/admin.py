@@ -268,7 +268,8 @@ class InvoiceAdmin(ModelAdmin):
         
         invoice = get_object_or_404(Invoice, pk=object_id)
         
-        active_cns = invoice.issued_credit_notes.filter(status='ACTIVE')
+        from apps.credit_notes.choices import CreditNoteStatus
+        active_cns = invoice.issued_credit_notes.filter(status=CreditNoteStatus.ACTIVE)
         if active_cns.exists():
             if any(cn.allocated_amount > 0 for cn in active_cns):
                 messages.error(request, "Cannot re-open: This invoice has generated Credit Notes that have already been allocated. Please remove their allocations first.")

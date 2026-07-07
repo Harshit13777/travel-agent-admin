@@ -84,18 +84,20 @@ class Invoice(AuditModel):
 
     @property
     def balance_due(self):
+        from apps.credit_notes.choices import CreditNoteStatus
         payments_sum = sum(p.amount for p in self.payments.all())
         allocations_sum = sum(a.amount for a in self.credit_allocations.all())
-        generated_credit_notes_sum = sum(cn.amount for cn in self.issued_credit_notes.filter(status='ACTIVE'))
+        generated_credit_notes_sum = sum(cn.amount for cn in self.issued_credit_notes.filter(status=CreditNoteStatus.ACTIVE))
         return self.current_invoice_value - payments_sum - allocations_sum + generated_credit_notes_sum
 
     @property
     def payment_status(self):
+        from apps.credit_notes.choices import CreditNoteStatus
         if self.balance_due <= Decimal('0.00'):
             return "PAID"
         payments_sum = sum(p.amount for p in self.payments.all())
         allocations_sum = sum(a.amount for a in self.credit_allocations.all())
-        generated_credit_notes_sum = sum(cn.amount for cn in self.issued_credit_notes.filter(status='ACTIVE'))
+        generated_credit_notes_sum = sum(cn.amount for cn in self.issued_credit_notes.filter(status=CreditNoteStatus.ACTIVE))
         
         if (payments_sum + allocations_sum + generated_credit_notes_sum) > Decimal('0.00'):
             return "PARTIAL"
