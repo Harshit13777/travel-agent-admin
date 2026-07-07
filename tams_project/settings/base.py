@@ -226,11 +226,6 @@ UNFOLD = {
                         "icon": "cancel",
                         "link": "/admin/cancellations/bookingcancellation/",
                     },
-                    {
-                        "title": "Supplier Settlements",
-                        "icon": "handshake",
-                        "link": "/admin/cancellations/cancellationsettlement/",
-                    },
                 ],
             },
         ],

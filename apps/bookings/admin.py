@@ -6,11 +6,13 @@ class BookingServiceInline(TabularInline):
     model = BookingService
     extra = 1
     autocomplete_fields = ['service_type', 'supplier']
+    exclude = ['display_order']
 
     def get_readonly_fields(self, request, obj=None):
+        fields = ['total_supplier_cost', 'total_service_charge', 'currency']
         if obj and obj.is_locked:
-            return ['service_type', 'supplier_cost', 'service_charge', 'discount', 'currency']
-        return []
+            fields.append('service_type')
+        return fields
         
     def has_add_permission(self, request, obj=None):
         if obj and obj.is_locked:
@@ -29,7 +31,7 @@ class BookingTravelerInline(TabularInline):
 
     def get_readonly_fields(self, request, obj=None):
         if obj and obj.booking.is_locked:
-            return ['traveler', 'fare']
+            return ['traveler', 'supplier_cost', 'service_charge', 'is_gst_applicable']
         return []
         
     def has_add_permission(self, request, obj=None):
@@ -67,7 +69,7 @@ def action_generate_invoice(modeladmin, request, queryset):
 
 @admin.register(Booking)
 class BookingAdmin(ModelAdmin):
-    list_display = ['booking_number', 'title', 'customer', 'status', 'priority']
+    list_display = ['booking_number', 'title', 'customer', 'passenger_list', 'status', 'priority']
     search_fields = ['booking_number', 'title', 'customer__name']
     list_filter = ['status', 'priority', 'booking_source']
     autocomplete_fields = ['customer', 'assigned_to']
@@ -95,7 +97,7 @@ class BookingAdmin(ModelAdmin):
         if obj is None:
             return []
             
-        readonly = ['booking_number', 'locked_at', 'invoice_link']
+        readonly = ['booking_number', 'locked_at', 'invoice_link', 'passenger_list']
         if obj.is_locked:
             readonly.extend(['customer', 'booking_source'])
         return readonly
@@ -109,26 +111,41 @@ class BookingAdmin(ModelAdmin):
         return "No Invoice Generated"
     invoice_link.short_description = "Related Invoice"
 
+    def passenger_list(self, obj):
+        from apps.bookings.models import BookingTraveler
+        travelers = BookingTraveler.objects.filter(booking_service__booking=obj).values_list('traveler__first_name', 'traveler__last_name').distinct()
+        names = [f"{t[0]} {t[1]}".strip() for t in travelers]
+        if not names:
+            return "No Passengers"
+        if len(names) > 3:
+            return ", ".join(names[:3]) + f" (+{len(names)-3} more)"
+        return ", ".join(names)
+    passenger_list.short_description = "Passengers"
+
     def get_exclude(self, request, obj=None):
         if obj is None:
             return ['booking_number', 'locked_at']
         return []
-
-    def get_inlines(self, request, obj=None):
-        inlines = super().get_inlines(request, obj)
-        if obj and hasattr(obj, 'invoice'):
-            from apps.cancellations.admin import BookingCancellationInlineForBooking
-            if BookingCancellationInlineForBooking not in inlines:
-                # Need to return a new list so we don't modify the class attribute
-                return list(inlines) + [BookingCancellationInlineForBooking]
-        return inlines
 
     def save_model(self, request, obj, form, change):
         if not change:
             from apps.bookings.services import create_booking
             create_booking(booking=obj, user=request.user)
         else:
-            super().save_model(request, obj, form, change)
+            from apps.bookings.services import update_booking
+            update_booking(booking=obj, user=request.user)
+
+    def save_formset(self, request, form, formset, change):
+        instances = formset.save(commit=False)
+        from apps.bookings.services import update_booking_service, delete_booking_service
+        for obj in formset.deleted_objects:
+            delete_booking_service(obj, user=request.user)
+        for instance in instances:
+            if isinstance(instance, BookingService):
+                update_booking_service(instance, user=request.user)
+            else:
+                instance.save()
+        formset.save_m2m()
 
 @admin.register(ServiceType)
 class ServiceTypeAdmin(ModelAdmin):
@@ -138,17 +155,37 @@ class ServiceTypeAdmin(ModelAdmin):
 
 @admin.register(BookingService)
 class BookingServiceAdmin(ModelAdmin):
-    list_display = ['booking', 'service_type', 'status', 'service_charge']
+    list_display = ['booking', 'service_type', 'status', 'total_service_charge']
     list_select_related = ['booking', 'service_type', 'supplier']
     autocomplete_fields = ['booking', 'service_type', 'supplier']
     search_fields = ['booking__booking_number', 'reference_number']
     inlines = [BookingTravelerInline]
     list_filter = ['status', 'service_type']
+    exclude = ['display_order']
 
     def get_readonly_fields(self, request, obj=None):
+        fields = ['total_supplier_cost', 'total_service_charge', 'currency']
         if obj and obj.booking.is_locked:
-            return ['booking', 'service_type', 'supplier_cost', 'service_charge', 'discount', 'currency', 'supplier']
-        return []
+            fields.extend(['booking', 'service_type', 'supplier'])
+        return fields
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "booking":
+            from apps.bookings.models import Booking
+            kwargs["queryset"] = Booking.objects.filter(locked_at__isnull=True)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def save_formset(self, request, form, formset, change):
+        instances = formset.save(commit=False)
+        from apps.bookings.services import update_booking_traveler, delete_booking_traveler
+        for obj in formset.deleted_objects:
+            delete_booking_traveler(obj, user=request.user)
+        for instance in instances:
+            if isinstance(instance, BookingTraveler):
+                update_booking_traveler(instance, user=request.user)
+            else:
+                instance.save()
+        formset.save_m2m()
 
 @admin.register(BookingHistory)
 class BookingHistoryAdmin(ModelAdmin):

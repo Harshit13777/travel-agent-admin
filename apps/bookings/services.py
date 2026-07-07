@@ -326,3 +326,33 @@ def cancel_passenger_with_credit(traveler: BookingTraveler, data: dict, user=Non
                 user=user
             )
 
+
+
+def update_booking_traveler(booking_traveler, user=None):
+    """
+    Validates and updates a BookingTraveler.
+    Business logic: Cannot modify financial fields once invoiced.
+    """
+    if booking_traveler.pk:
+        original = BookingTraveler.objects.get(pk=booking_traveler.pk)
+        booking = booking_traveler.booking_service.booking
+        if booking.is_locked:
+            if (original.supplier_cost != booking_traveler.supplier_cost or 
+                original.service_charge != booking_traveler.service_charge or 
+                original.is_gst_applicable != booking_traveler.is_gst_applicable):
+                from django.core.exceptions import ValidationError
+                raise ValidationError("Cannot modify financial fields of a passenger after the booking is invoiced.")
+    booking_traveler.save()
+
+
+def update_booking(booking, user=None):
+    if booking.journey_start and booking.journey_end and booking.journey_end < booking.journey_start:
+        from django.core.exceptions import ValidationError
+        raise ValidationError({'journey_end': 'Journey end cannot be before journey start.'})
+    booking.save()
+
+def update_booking_service(booking_service, user=None):
+    if booking_service.journey_start and booking_service.journey_end and booking_service.journey_end < booking_service.journey_start:
+        from django.core.exceptions import ValidationError
+        raise ValidationError({'journey_end': 'Journey end cannot be before journey start.'})
+    booking_service.save()

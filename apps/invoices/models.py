@@ -94,7 +94,6 @@ class InvoiceLine(AuditModel):
     supplier_cost = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     service_charge = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     discount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
-    is_taxable = models.BooleanField(default=True)
     taxable_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     
     cgst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))

@@ -1,104 +1,72 @@
 from decimal import Decimal
 from django.db import models
-from django.db.models import Sum
 from django.conf import settings
 from apps.common.models import AuditModel
-from apps.bookings.models import Booking
-from apps.invoices.models import Invoice, InvoiceLine, InvoiceLineTraveler
-from apps.cancellations.choices import CancellationType, CancellationStatus, SettlementStatus
+from apps.invoices.models import InvoiceLineTraveler
+from apps.cancellations.choices import CancellationStatus, CancellationSource
 
 class BookingCancellation(AuditModel):
-    booking = models.ForeignKey(Booking, on_delete=models.PROTECT, related_name='cancellations', blank=True)
-    invoice = models.ForeignKey(Invoice, on_delete=models.PROTECT, related_name='cancellations')
-    invoice_line = models.ForeignKey(InvoiceLine, on_delete=models.PROTECT, related_name='cancellations', null=True, blank=True)
-    invoice_line_traveler = models.ForeignKey(InvoiceLineTraveler, on_delete=models.PROTECT, related_name='cancellations', null=True, blank=True)
+    # Foreign Keys strictly PROTECTED. Invoice FK is removed to prevent redundancy.
+    invoice_line_traveler = models.ForeignKey(InvoiceLineTraveler, on_delete=models.PROTECT, related_name='cancellations')
     
-    type = models.CharField(max_length=50, choices=CancellationType.choices)
-    reason = models.TextField(blank=True)
-    status = models.CharField(max_length=50, choices=CancellationStatus.choices, default=CancellationStatus.REQUESTED)
-    
-    refund_gst = models.BooleanField(default=True)
-    
-    # Base Refunds
+    # Granular Financial Components
+    supplier_refund = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     service_refund = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     cgst_refund = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     sgst_refund = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     igst_refund = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     
-    # Snapshotted Properties (permanently frozen at finalization)
-    supplier_refund = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, help_text="Stored permanently upon finalization")
-    total_refund = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, help_text="Stored permanently upon finalization")
-    finalized_invoice_value = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, help_text="Stored permanently upon finalization")
+    # Soft Delete & State
+    status = models.CharField(max_length=50, choices=CancellationStatus.choices, default=CancellationStatus.ACTIVE)
+    reason = models.TextField(blank=True)
     
-    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='requested_cancellations')
-    requested_at = models.DateTimeField(null=True, blank=True)
-    finalized_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='finalized_cancellations')
-    finalized_at = models.DateTimeField(null=True, blank=True)
+    # Audit trail
+    remarks = models.TextField(blank=True)
+    source = models.CharField(max_length=50, choices=CancellationSource.choices, default=CancellationSource.ADMIN)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='created_cancellations')
 
     class Meta:
         verbose_name = "Booking Cancellation"
         verbose_name_plural = "Booking Cancellations"
+        constraints = [
+            # 1-to-1 Active Rule
+            models.UniqueConstraint(
+                fields=["invoice_line_traveler"],
+                condition=models.Q(status="ACTIVE"),
+                name="unique_active_cancellation"
+            ),
+            # Absolute Zero Checks
+            models.CheckConstraint(condition=models.Q(supplier_refund__gte=0), name="supplier_refund_positive"),
+            models.CheckConstraint(condition=models.Q(service_refund__gte=0), name="service_refund_positive"),
+            models.CheckConstraint(condition=models.Q(cgst_refund__gte=0), name="cgst_refund_positive"),
+            models.CheckConstraint(condition=models.Q(sgst_refund__gte=0), name="sgst_refund_positive"),
+            models.CheckConstraint(condition=models.Q(igst_refund__gte=0), name="igst_refund_positive"),
+        ]
+
+    @property
+    def total_refund(self):
+        return self.supplier_refund + self.service_refund + self.cgst_refund + self.sgst_refund + self.igst_refund
 
     def clean(self):
         from django.core.exceptions import ValidationError
         
-        if hasattr(self, 'invoice') and self.invoice:
-            self.booking = self.invoice.booking
+        # Enforce Immutability on Update
+        if self.pk:
+            orig = BookingCancellation.objects.get(pk=self.pk)
+            # You can only change status
+            if (self.supplier_refund != orig.supplier_refund or
+                self.service_refund != orig.service_refund or
+                self.cgst_refund != orig.cgst_refund or
+                self.sgst_refund != orig.sgst_refund or
+                self.igst_refund != orig.igst_refund or
+                self.invoice_line_traveler_id != orig.invoice_line_traveler_id):
+                raise ValidationError("Financial fields and traveler reference on a cancellation are immutable. To correct mistakes, VOID this cancellation and create a new one.")
             
-        if self.type == CancellationType.PASSENGER and not self.invoice_line_traveler:
-            raise ValidationError("Passenger cancellations must reference an invoice line traveler.")
-        if self.type == CancellationType.SERVICE and not self.invoice_line:
-            raise ValidationError("Service cancellations must reference an invoice line.")
-        if not self.refund_gst:
-            if self.cgst_refund != 0 or self.sgst_refund != 0 or self.igst_refund != 0:
-                raise ValidationError("Tax refunds must be 0 if refund_gst is False.")
+            # Cannot change from VOID to ACTIVE
+            if orig.status == CancellationStatus.VOID and self.status == CancellationStatus.ACTIVE:
+                # Need to check manually here in case they try to bypass the service
+                if BookingCancellation.objects.filter(invoice_line_traveler=self.invoice_line_traveler, status=CancellationStatus.ACTIVE).exclude(pk=self.pk).exists():
+                    raise ValidationError("Another ACTIVE cancellation already exists for this traveler.")
 
     def __str__(self):
-        return f"Cancellation for {self.invoice.invoice_number}"
-
-class CancellationSettlement(AuditModel):
-    booking_cancellation = models.ForeignKey(BookingCancellation, on_delete=models.CASCADE, related_name='settlements')
-    settlement_number = models.CharField(max_length=50, unique=True, db_index=True, blank=True)
-    supplier = models.CharField(max_length=255, blank=True)
-    
-    def save(self, *args, **kwargs):
-        if not self.settlement_number:
-            from django.utils import timezone
-            import random
-            timestamp = timezone.now().strftime("%Y%m%d%H%M%S")
-            self.settlement_number = f"SET-{timestamp}-{random.randint(100, 999)}"
-        super().save(*args, **kwargs)
-    
-    currency = models.CharField(max_length=10, default='INR')
-    exchange_rate = models.DecimalField(max_digits=10, decimal_places=4, default=Decimal("1.0000"))
-    
-    settled_supplier_refund = models.DecimalField(
-        max_digits=12, 
-        decimal_places=2, 
-        default=Decimal("0.00"),
-        verbose_name="Supplier Refund (To Customer)",
-        help_text="This is the supplier refund amount that will be ADDED to the customer's total refund when finalized."
-    )
-    received_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
-    received_currency = models.CharField(max_length=10, default='INR')
-    
-    supplier_reference = models.CharField(max_length=255, blank=True)
-    bank_reference = models.CharField(max_length=255, blank=True)
-    attachment = models.FileField(upload_to='settlements/', null=True, blank=True)
-    remarks = models.TextField(blank=True)
-    
-    status = models.CharField(max_length=50, choices=SettlementStatus.choices, default=SettlementStatus.PENDING)
-    
-    amount_received_date = models.DateField(null=True, blank=True)
-    approved_date = models.DateTimeField(null=True, blank=True)
-    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_settlements')
-
-    class Meta:
-        verbose_name = "Cancellation Settlement"
-        verbose_name_plural = "Cancellation Settlements"
-
-    def clean(self):
-        pass
-
-    def __str__(self):
-        return f"Settlement {self.settlement_number} for {self.booking_cancellation}"
+        return f"Cancellation for Traveler {self.invoice_line_traveler.id}"

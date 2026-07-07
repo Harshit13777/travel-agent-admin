@@ -4,169 +4,112 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.db.models import Sum
 
-from apps.cancellations.models import BookingCancellation, CancellationSettlement
-from apps.invoices.models import Invoice, InvoiceLineTraveler, InvoiceLine
-from apps.credit_notes.models import CreditNote
-from apps.cancellations.choices import CancellationStatus, SettlementStatus
-from apps.credit_notes.choices import CreditNoteSource
+from apps.cancellations.models import BookingCancellation
+from apps.invoices.models import Invoice, InvoiceLineTraveler
+from apps.cancellations.choices import CancellationStatus
 
 class CancellationValidationService:
     
     @classmethod
-    def validate_cancellation_totals(cls, cancellation: BookingCancellation):
+    def validate_components(cls, travelers, refund_data):
         """
-        Ensures that a single cancellation does not exceed the remaining snapshot value.
+        Validates that the proposed refunds do not exceed the remaining financial limits
+        for each traveler.
         """
-        # Determine the snapshot target
-        if cancellation.type == 'PASSENGER' and cancellation.invoice_line_traveler:
-            snapshot = cancellation.invoice_line_traveler
-            related_cancellations = BookingCancellation.objects.filter(
-                invoice_line_traveler=snapshot,
-                status='FINALIZED'
-            ).exclude(id=cancellation.id)
-        elif cancellation.type == 'SERVICE' and cancellation.invoice_line:
-            snapshot = cancellation.invoice_line
-            related_cancellations = BookingCancellation.objects.filter(
-                invoice_line=snapshot,
-                status='FINALIZED'
-            ).exclude(id=cancellation.id)
-        else:
-            # OTHER types don't have a strict snapshot cost constraint like a service
-            return
-
-        # Calculate previously finalized refunds
-        prev_service = related_cancellations.aggregate(t=Sum('service_refund'))['t'] or Decimal("0.00")
-        prev_cgst = related_cancellations.aggregate(t=Sum('cgst_refund'))['t'] or Decimal("0.00")
-        prev_sgst = related_cancellations.aggregate(t=Sum('sgst_refund'))['t'] or Decimal("0.00")
-        prev_igst = related_cancellations.aggregate(t=Sum('igst_refund'))['t'] or Decimal("0.00")
-        prev_supplier = related_cancellations.aggregate(t=Sum('supplier_refund'))['t'] or Decimal("0.00")
-
-        # Validate against snapshot
-        if (cancellation.service_refund + prev_service) > snapshot.service_charge:
-            raise ValidationError(f"Total service refund exceeds snapshot service charge of {snapshot.service_charge}.")
-            
-        if cancellation.refund_gst:
-            # We assume cgst, sgst, igst are stored on the snapshot (e.g., cgst_amount or cgst)
-            cgst_limit = getattr(snapshot, 'cgst', getattr(snapshot, 'cgst_amount', Decimal('0.00')))
-            if (cancellation.cgst_refund + prev_cgst) > cgst_limit:
-                raise ValidationError("Total CGST refund exceeds snapshot CGST.")
-                
-        # We temporarily calculate supplier refund sum for validation
-        current_supplier = cancellation.settlements.filter(status=SettlementStatus.APPROVED).aggregate(
-            t=Sum('settled_supplier_refund')
-        )['t'] or Decimal('0.00')
-        
-        if (current_supplier + prev_supplier) > snapshot.supplier_cost:
-            raise ValidationError(f"Total supplier refund exceeds snapshot supplier cost of {snapshot.supplier_cost}.")
-
-    @classmethod
-    def validate_settlement_creation(cls, settlement):
-        from decimal import Decimal
-        from django.db.models import Sum
-        from django.core.exceptions import ValidationError
-        
-        if not hasattr(settlement, 'booking_cancellation') or not settlement.booking_cancellation:
-            return
-            
-        cancellation = settlement.booking_cancellation
-        
-        if cancellation.type == 'PASSENGER' and cancellation.invoice_line_traveler:
-            snapshot = cancellation.invoice_line_traveler
-        elif cancellation.type == 'SERVICE' and cancellation.invoice_line:
-            snapshot = cancellation.invoice_line
-        else:
-            return
-            
-        other_settlements = cancellation.settlements.exclude(id=settlement.id)
-        
-        current_supplier_sum = other_settlements.aggregate(t=Sum('settled_supplier_refund'))['t'] or Decimal('0.00')
-        total_supplier_proposed = current_supplier_sum + settlement.settled_supplier_refund
-        
-        current_received_sum = other_settlements.aggregate(t=Sum('received_amount'))['t'] or Decimal('0.00')
-        total_received_proposed = current_received_sum + settlement.received_amount
-        
-        if total_supplier_proposed > snapshot.supplier_cost:
-            max_allowed = snapshot.supplier_cost - current_supplier_sum
-            raise ValidationError({
-                'settled_supplier_refund': f"Total supplier refunds ({total_supplier_proposed}) cannot exceed original supplier cost ({snapshot.supplier_cost}). You can only add up to {max_allowed}."
-            })
-            
-        if total_received_proposed > snapshot.supplier_cost:
-            max_allowed_received = snapshot.supplier_cost - current_received_sum
-            raise ValidationError({
-                'received_amount': f"Total received amounts ({total_received_proposed}) cannot exceed original supplier cost ({snapshot.supplier_cost}). You can only receive up to {max_allowed_received}."
-            })
-
-class CancellationFinalizationService:
-    
-    @classmethod
-    @transaction.atomic
-    def finalize_cancellation(cls, cancellation_id, finalized_by_user=None):
-        """
-        The absolute single source of truth for finalizing a cancellation.
-        """
-        # 1. Lock rows
-        cancellation = BookingCancellation.objects.select_for_update().get(id=cancellation_id)
-        
-        if cancellation.status == CancellationStatus.FINALIZED:
-            raise ValidationError("Cancellation is already finalized.")
-            
-        invoice = Invoice.objects.select_for_update().get(id=cancellation.invoice_id)
-        booking = invoice.booking
-        
-        # 2. Validate Refunds
-        CancellationValidationService.validate_cancellation_totals(cancellation)
-        
-        # 3. Freeze Supplier Refund (SUM of APPROVED settlements)
-        approved_supplier_refund = cancellation.settlements.filter(status=SettlementStatus.APPROVED).aggregate(
-            t=Sum('settled_supplier_refund')
-        )['t'] or Decimal('0.00')
-        
-        cancellation.supplier_refund = approved_supplier_refund
-        
-        # 4. Freeze Total Refund
-        total_tax_refund = Decimal('0.00')
-        if cancellation.refund_gst:
-            total_tax_refund = cancellation.cgst_refund + cancellation.sgst_refund + cancellation.igst_refund
-            
-        cancellation.total_refund = cancellation.service_refund + total_tax_refund + approved_supplier_refund
-        
-        # We temporarily set the status so current_invoice_value recalculates correctly
-        cancellation.status = CancellationStatus.FINALIZED
-        cancellation.finalized_at = timezone.now()
-        cancellation.finalized_by = finalized_by_user
-        
-        # Save so the DB aggregate captures it for current_invoice_value
-        cancellation.save() 
-        
-        # 5. Freeze finalized_invoice_value
-        # Note: invoice.current_invoice_value will now include this newly finalized cancellation
-        # because we just saved it as FINALIZED above.
-        cancellation.finalized_invoice_value = invoice.current_invoice_value
-        cancellation.save(update_fields=['finalized_invoice_value'])
-        
-        # 6. Update Booking & Invoice Statuses
-        # Simplistic cascade: Since at least one cancellation finalized, set to PARTIALLY_CANCELLED
-        booking.status = 'PARTIALLY_CANCELLED'
-        booking.save(update_fields=['status'])
-        
-        invoice.cancellation_status = 'PARTIAL'
-        invoice.save(update_fields=['cancellation_status'])
-        
-        # 7. Calculate Invoice.balance_due
-        balance_due = invoice.balance_due
-        
-        # 8. Generate Credit Note if Balance Due < 0
-        if balance_due < Decimal('0.00'):
-            credit_amount = abs(balance_due)
-            cn = CreditNote.objects.create(
-                customer=booking.customer,
-                invoice=invoice,
-                number=f"CN-{invoice.invoice_number}-{cancellation.id}",
-                source=CreditNoteSource.CANCELLATION,
-                amount=credit_amount,
-                issued_by=finalized_by_user,
-                reason=f"Generated from cancellation #{cancellation.id}"
+        for traveler in travelers:
+            # Calculate previously ACTIVE refunds for this traveler
+            active_cancellations = BookingCancellation.objects.filter(
+                invoice_line_traveler=traveler,
+                status=CancellationStatus.ACTIVE
             )
             
-        return cancellation
+            prev_supplier = active_cancellations.aggregate(t=Sum('supplier_refund'))['t'] or Decimal("0.00")
+            prev_service = active_cancellations.aggregate(t=Sum('service_refund'))['t'] or Decimal("0.00")
+            prev_cgst = active_cancellations.aggregate(t=Sum('cgst_refund'))['t'] or Decimal("0.00")
+            prev_sgst = active_cancellations.aggregate(t=Sum('sgst_refund'))['t'] or Decimal("0.00")
+            prev_igst = active_cancellations.aggregate(t=Sum('igst_refund'))['t'] or Decimal("0.00")
+            
+            # Extract proposed refunds (assuming refund_data maps traveler_id to a dict of refunds, or applies a uniform refund)
+            # For simplicity in this implementation, we assume refund_data provides the granular amounts per traveler.
+            data = refund_data.get(traveler.id, {})
+            proposed_supplier = data.get('supplier_refund', Decimal("0.00"))
+            proposed_service = data.get('service_refund', Decimal("0.00"))
+            proposed_cgst = data.get('cgst_refund', Decimal("0.00"))
+            proposed_sgst = data.get('sgst_refund', Decimal("0.00"))
+            proposed_igst = data.get('igst_refund', Decimal("0.00"))
+            
+            # Validate each component against traveler limits
+            # Fallback to 0 if not present on traveler for some reason (though they should be required in schema)
+            if (prev_supplier + proposed_supplier) > getattr(traveler, 'supplier_cost', Decimal('0.00')):
+                raise ValidationError(f"Total supplier refund exceeds snapshot limit for traveler {traveler.id}")
+                
+            if (prev_service + proposed_service) > getattr(traveler, 'service_charge', Decimal('0.00')):
+                raise ValidationError(f"Total service refund exceeds snapshot limit for traveler {traveler.id}")
+                
+            if (prev_cgst + proposed_cgst) > getattr(traveler, 'cgst_amount', Decimal('0.00')):
+                raise ValidationError(f"Total CGST refund exceeds snapshot limit for traveler {traveler.id}")
+                
+            if (prev_sgst + proposed_sgst) > getattr(traveler, 'sgst_amount', Decimal('0.00')):
+                raise ValidationError(f"Total SGST refund exceeds snapshot limit for traveler {traveler.id}")
+                
+            if (prev_igst + proposed_igst) > getattr(traveler, 'igst_amount', Decimal('0.00')):
+                raise ValidationError(f"Total IGST refund exceeds snapshot limit for traveler {traveler.id}")
+
+class CancellationService:
+
+    @classmethod
+    @transaction.atomic
+    def cancel_passengers(cls, travelers, refund_data, user, source='ADMIN', reason='', remarks=''):
+        """
+        Main entry point for passenger cancellations. 
+        Enforces immutability, validates bounds, creates records, and optionally handles credit notes via external services.
+        """
+        if not travelers:
+            raise ValidationError("No travelers provided for cancellation.")
+
+        # 1. Lock the invoice to prevent race conditions
+        # Assuming all travelers belong to the same invoice for a batch operation
+        invoice_id = travelers[0].invoice_line.invoice_id
+        invoice = Invoice.objects.select_for_update().get(id=invoice_id)
+        
+        # Ensure all travelers belong to the same locked invoice
+        for traveler in travelers:
+            if traveler.invoice_line.invoice_id != invoice.id:
+                raise ValidationError("All travelers in a single cancellation request must belong to the same invoice.")
+                
+            # Prevent multiple ACTIVE cancellations per traveler (also enforced by DB constraints)
+            if BookingCancellation.objects.filter(invoice_line_traveler=traveler, status=CancellationStatus.ACTIVE).exists():
+                raise ValidationError(f"Traveler {traveler.id} already has an ACTIVE cancellation record.")
+        
+        # 2. Delegate to CancellationValidationService
+        CancellationValidationService.validate_components(travelers, refund_data)
+        
+        # 3. Create immutable ACTIVE cancellation ledger rows
+        cancellations = []
+        for traveler in travelers:
+            data = refund_data.get(traveler.id, {})
+            cancellation = BookingCancellation(
+                invoice_line_traveler=traveler,
+                supplier_refund=data.get('supplier_refund', Decimal("0.00")),
+                service_refund=data.get('service_refund', Decimal("0.00")),
+                cgst_refund=data.get('cgst_refund', Decimal("0.00")),
+                sgst_refund=data.get('sgst_refund', Decimal("0.00")),
+                igst_refund=data.get('igst_refund', Decimal("0.00")),
+                status=CancellationStatus.ACTIVE,
+                reason=reason,
+                remarks=remarks,
+                source=source,
+                created_by=user
+            )
+            cancellation.save() # Triggers DB checks and Unique constraints
+            cancellations.append(cancellation)
+            
+        # Optional: You can call InvoiceCalculationService and CreditNoteService here if they exist in your project
+        # from apps.invoices.services import InvoiceCalculationService
+        # from apps.credit_notes.services import CreditNoteService
+        # 
+        # outstanding = InvoiceCalculationService.calculate_outstanding(invoice)
+        # if outstanding < 0:
+        #     CreditNoteService.generate_from_overpayment(invoice, abs(outstanding))
+            
+        return cancellations

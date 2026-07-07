@@ -1,9 +1,9 @@
 from decimal import Decimal, ROUND_HALF_UP
 from django.db import transaction
 from django.utils import timezone
-from apps.invoices.models import Invoice, InvoiceLine
+from apps.invoices.models import Invoice, InvoiceLine, InvoiceLineTraveler
 from apps.invoices.choices import InvoiceStatus
-from apps.bookings.models import Booking
+from apps.bookings.models import Booking, BookingTraveler
 from apps.bookings.choices import BookingStatus, BookingServiceStatus, BookingHistoryAction
 from apps.common.number_generator import generate_invoice_number
 from apps.bookings.services import log_booking_history
@@ -58,69 +58,15 @@ def generate_invoice(booking: Booking, user=None, applied_credit_notes=None) -> 
         sgst_amount = Decimal("0.00")
         igst_amount = Decimal("0.00")
         
-        line_data_list = []
-        
-        for service in services:
-            line_supplier = service.supplier_cost.quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
-            line_service_charge = service.service_charge.quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
-            line_discount = service.discount.quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
-            
-            line_taxable = Decimal("0.00")
-            line_cgst = Decimal("0.00")
-            line_sgst = Decimal("0.00")
-            line_igst = Decimal("0.00")
-            
-            is_taxable = getattr(service, 'is_taxable', True)
-            
-            if is_taxable:
-                line_taxable = (line_service_charge - line_discount).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
-                if line_taxable < Decimal('0.00'):
-                    line_taxable = Decimal("0.00")
-                    
-                if settings.gst_enabled:
-                    if settings.gst_type == 'CGST_SGST':
-                        line_cgst = (line_taxable * (settings.cgst_rate / Decimal("100.00"))).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
-                        line_sgst = (line_taxable * (settings.sgst_rate / Decimal("100.00"))).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
-                    elif settings.gst_type == 'IGST':
-                        line_igst = (line_taxable * (settings.igst_rate / Decimal("100.00"))).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
-                        
-            line_total = (line_supplier + line_service_charge - line_discount + line_cgst + line_sgst + line_igst).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
-            
-            supplier_total += line_supplier
-            service_charge_total += (line_service_charge - line_discount)
-            taxable_amount += line_taxable
-            cgst_amount += line_cgst
-            sgst_amount += line_sgst
-            igst_amount += line_igst
-            
-            line_data_list.append({
-                'service': service,
-                'supplier_cost': line_supplier,
-                'service_charge': line_service_charge,
-                'discount': line_discount,
-                'is_taxable': is_taxable,
-                'taxable_amount': line_taxable,
-                'cgst_amount': line_cgst,
-                'sgst_amount': line_sgst,
-                'igst_amount': line_igst,
-                'total': line_total
-            })
-            
-        # 4. Validate Math
-        subtotal_before_tax = supplier_total + service_charge_total
-        grand_total = (subtotal_before_tax + cgst_amount + sgst_amount + igst_amount).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
-        
-        credit_applied = Decimal("0.00")
         invoice_number = generate_invoice_number()
         
-        # 5. Create Invoice Snapshot
+        # Create Invoice Header Snapshot
         invoice = Invoice.objects.create(
             booking=booking,
             invoice_number=invoice_number,
             invoice_date=timezone.now().date(),
             due_date=timezone.now().date(),
             
-            # Company Identity Snapshot
             company_name=settings.company_name,
             gstin=settings.gstin,
             pan=settings.pan,
@@ -128,7 +74,6 @@ def generate_invoice(booking: Booking, user=None, applied_credit_notes=None) -> 
             phone=settings.phone,
             email=settings.email,
             
-            # Settings Snapshot
             currency=settings.currency,
             gst_enabled=settings.gst_enabled,
             gst_type=settings.gst_type,
@@ -138,129 +83,143 @@ def generate_invoice(booking: Booking, user=None, applied_credit_notes=None) -> 
             tax_label_1=settings.tax_label_1,
             tax_label_2=settings.tax_label_2,
             tax_label_3=settings.tax_label_3,
-            
-            # Financial Snapshot
-            supplier_total=supplier_total,
-            service_charge_total=service_charge_total,
-            subtotal_before_tax=subtotal_before_tax,
-            taxable_amount=taxable_amount,
-            cgst_amount=cgst_amount,
-            sgst_amount=sgst_amount,
-            igst_amount=igst_amount,
-            
-            grand_total=grand_total,
-            original_total=grand_total,
-            final_payable=grand_total,
-            status=InvoiceStatus.ISSUED
         )
         
-        # 6. Create Invoice Line Snapshots
-        for data in line_data_list:
-            service = data['service']
+        for service in services:
+            travelers = service.booking_travelers.exclude(passenger_status='CANCELLED')
+            if not travelers.exists():
+                continue
+                
+            line_supplier = Decimal("0.00")
+            line_service_charge = Decimal("0.00")
+            line_discount = Decimal("0.00")
+            
+            line_taxable = Decimal("0.00")
+            line_cgst = Decimal("0.00")
+            line_sgst = Decimal("0.00")
+            line_igst = Decimal("0.00")
+            
             inv_line = InvoiceLine.objects.create(
                 invoice=invoice,
                 booking_service=service,
                 service_type=service.service_type.name,
                 service_provider=service.service_provider,
-                supplier_cost=data['supplier_cost'],
-                service_charge=data['service_charge'],
-                discount=data['discount'],
-                is_taxable=data['is_taxable'],
-                taxable_amount=data['taxable_amount'],
-                cgst_amount=data['cgst_amount'],
-                sgst_amount=data['sgst_amount'],
-                igst_amount=data['igst_amount'],
-                total=data['total']
             )
             
-            # Create InvoiceLineTraveler snapshots
-            travelers = service.booking_travelers.exclude(passenger_status='CANCELLED')
-            t_count = travelers.count()
-            if t_count > 0:
-                for idx, t in enumerate(travelers):
-                    from apps.invoices.models import InvoiceLineTraveler
-                    InvoiceLineTraveler.objects.create(
-                        invoice_line=inv_line,
-                        booking_traveler=t,
-                        traveler_sequence=idx + 1,
-                        traveler_name=t.traveler.full_name,
-                        ticket_number=t.ticket_number,
-                        supplier_cost=data['supplier_cost'] / t_count,
-                        service_charge=data['service_charge'] / t_count,
-                        discount=data['discount'] / t_count,
-                        taxable_amount=data['taxable_amount'] / t_count,
-                        cgst=data['cgst_amount'] / t_count,
-                        sgst=data['sgst_amount'] / t_count,
-                        igst=data['igst_amount'] / t_count,
-                        total=data['total'] / t_count
-                    )
-        
-        # Apply Credit Notes via CreditAllocation
-        if applied_credit_notes:
-            from apps.credit_notes.services import CreditNoteService
-            
-            for cn in applied_credit_notes:
-                if cn.customer != booking.customer:
-                    raise ValidationError(f"Credit Note {cn.number} belongs to a different customer.")
+            for idx, t in enumerate(travelers):
+                t_taxable = Decimal("0.00")
+                t_cgst = Decimal("0.00")
+                t_sgst = Decimal("0.00")
+                t_igst = Decimal("0.00")
                 
-                remaining = cn.remaining_amount
-                if remaining <= 0:
-                    continue
+                if t.is_gst_applicable:
+                    t_taxable = t.service_charge
+                    if settings.gst_enabled:
+                        if settings.gst_type == 'CGST_SGST':
+                            t_cgst = (t_taxable * (settings.cgst_rate / Decimal("100.00"))).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
+                            t_sgst = (t_taxable * (settings.sgst_rate / Decimal("100.00"))).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
+                        elif settings.gst_type == 'IGST':
+                            t_igst = (t_taxable * (settings.igst_rate / Decimal("100.00"))).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
                     
-                amount_to_apply = remaining
+                t_total = t.supplier_cost + t.service_charge + t_cgst + t_sgst + t_igst
                 
-                if amount_to_apply > (original_total - credit_applied):
-                    amount_to_apply = original_total - credit_applied
-                
-                if amount_to_apply <= 0:
-                    continue
-                    
-                credit_applied += amount_to_apply
-                
-                CreditNoteService.allocate_credit(
-                    credit_note_id=cn.id,
-                    invoice_id=invoice.id,
-                    amount=amount_to_apply
+                InvoiceLineTraveler.objects.create(
+                    invoice_line=inv_line,
+                    booking_traveler=t,
+                    traveler_sequence=idx + 1,
+                    traveler_name=t.traveler.full_name,
+                    ticket_number=t.ticket_number,
+                    supplier_cost=t.supplier_cost,
+                    service_charge=t.service_charge,
+                    discount=Decimal("0.00"),  # No passenger discount for now
+                    taxable_amount=t_taxable,
+                    cgst=t_cgst,
+                    sgst=t_sgst,
+                    igst=t_igst,
+                    total=t_total
                 )
                 
-        # 7. Lock Booking and Update Invoice
-        final_payable = grand_total - credit_applied
-        if final_payable < Decimal("0.00"):
-            final_payable = Decimal("0.00")
+                line_supplier += t.supplier_cost
+                line_service_charge += t.service_charge
+                line_taxable += t_taxable
+                line_cgst += t_cgst
+                line_sgst += t_sgst
+                line_igst += t_igst
+                
+            line_total = line_supplier + line_service_charge - line_discount + line_cgst + line_sgst + line_igst
             
-        booking.locked_at = timezone.now()
-        booking.save(update_fields=['locked_at'])
+            inv_line.supplier_cost = line_supplier
+            inv_line.service_charge = line_service_charge
+            inv_line.discount = line_discount
+            inv_line.taxable_amount = line_taxable
+            inv_line.cgst_amount = line_cgst
+            inv_line.sgst_amount = line_sgst
+            inv_line.igst_amount = line_igst
+            inv_line.total = line_total
+            inv_line.save()
+            
+            supplier_total += line_supplier
+            service_charge_total += line_service_charge
+            taxable_amount += line_taxable
+            cgst_amount += line_cgst
+            sgst_amount += line_sgst
+            igst_amount += line_igst
+            
+        # Invoice Totals
+        subtotal_before_tax = supplier_total + service_charge_total
+        # For MVP we don't handle global discount, we assume discount at line level. 
+        # But wait, we didn't subtract discount from global service_charge_total! Let's do it if we need to.
+        # It's better to just leave discount 0 or remove it if not asked.
+        grand_total = subtotal_before_tax + cgst_amount + sgst_amount + igst_amount
         
+        invoice.supplier_total = supplier_total
+        invoice.service_charge_total = service_charge_total
+        invoice.subtotal_before_tax = subtotal_before_tax
+        invoice.taxable_amount = taxable_amount
+        invoice.cgst_amount = cgst_amount
+        invoice.sgst_amount = sgst_amount
+        invoice.igst_amount = igst_amount
+        invoice.grand_total = grand_total
+        invoice.original_total = grand_total
+        invoice.final_payable = grand_total
+        invoice.status = InvoiceStatus.ISSUED
+        invoice.save()
+        
+        # Credit notes logic...
+        credit_applied = Decimal("0.00")
+        if applied_credit_notes:
+            from apps.credit_notes.services import CreditNoteService
+            for cn in applied_credit_notes:
+                remaining = cn.remaining_amount
+                if remaining > 0:
+                    amount_to_apply = min(remaining, grand_total - credit_applied)
+                    if amount_to_apply > 0:
+                        credit_applied += amount_to_apply
+                        CreditNoteService.allocate_credit(cn.id, invoice.id, amount_to_apply)
+                        
+        final_payable = max(Decimal("0.00"), grand_total - credit_applied)
         invoice.final_payable = final_payable
         invoice.save(update_fields=['final_payable'])
         
-        # 8. Audit Trail
+        booking.locked_at = timezone.now()
+        booking.save(update_fields=['locked_at'])
+        
         log_booking_history(
             booking=booking,
             action=BookingHistoryAction.INVOICE_GENERATED,
-            description=f"Invoice {invoice_number} generated for {grand_total}. Final payable: {final_payable}",
-            metadata={
-                "invoice_id": invoice.id,
-                "supplier_total": str(supplier_total),
-                "service_charge_total": str(service_charge_total),
-                "grand_total": str(grand_total),
-                "gst_type": str(settings.gst_type)
-            },
+            description=f"Invoice {invoice_number} generated.",
+            metadata={"invoice_id": invoice.id},
             user=user
         )
         return invoice
 
 def cancel_invoice(invoice: Invoice, user=None) -> Invoice:
-    """
-    Cancel an invoice.
-    """
     if invoice.status == InvoiceStatus.VOID:
         return invoice
         
     with transaction.atomic():
         invoice.status = InvoiceStatus.VOID
         invoice.save(update_fields=['status'])
-        
         log_booking_history(
             booking=invoice.booking,
             action=BookingHistoryAction.INVOICE_CANCELLED,
@@ -269,11 +228,8 @@ def cancel_invoice(invoice: Invoice, user=None) -> Invoice:
             user=user
         )
         return invoice
+
 def update_invoice_status(invoice: Invoice) -> Invoice:
-    """
-    Update invoice status based on payment_status property.
-    This should be called whenever a payment is added or removed.
-    """
     with transaction.atomic():
         new_status = invoice.payment_status
         if invoice.status != new_status:

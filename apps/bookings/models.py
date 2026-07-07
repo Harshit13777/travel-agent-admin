@@ -29,28 +29,18 @@ class Booking(AuditModel):
         verbose_name = "Booking"
         verbose_name_plural = "Bookings"
 
-    def clean(self):
-        # clean() is only for model data validation (e.g., date checks).
-        if self.journey_start and self.journey_end and self.journey_end < self.journey_start:
-            from django.core.exceptions import ValidationError
-            raise ValidationError({'journey_end': 'Journey end cannot be before journey start.'})
-            
     def __str__(self):
         title_str = f" - {self.title}" if self.title else ""
         return f"{self.booking_number}{title_str} ({self.customer.name})"
 
     @property
     def total_supplier_cost(self):
-        return sum(service.supplier_cost for service in self.services.exclude(status=BookingServiceStatus.CANCELLED))
+        return sum(service.total_supplier_cost for service in self.services.exclude(status=BookingServiceStatus.CANCELLED))
 
     @property
     def total_service_charge(self):
-        return sum(service.service_charge for service in self.services.exclude(status=BookingServiceStatus.CANCELLED))
+        return sum(service.total_service_charge for service in self.services.exclude(status=BookingServiceStatus.CANCELLED))
         
-    @property
-    def total_discount(self):
-        return sum(service.discount for service in self.services.exclude(status=BookingServiceStatus.CANCELLED))
-
     @property
     def has_invoice(self):
         return self.invoices.exists()
@@ -65,9 +55,6 @@ class Booking(AuditModel):
 
     @property
     def paid_amount(self):
-        # We will sum payments related to invoices. For now, assuming payment models can be queried.
-        # This requires importing Payment or querying via reverse relations if set up.
-        # A simpler way is sum(inv.paid_amount for inv in self.invoices) if invoice has paid_amount.
         return sum(inv.paid_amount for inv in self.invoices.exclude(status='CANCELLED'))
 
     @property
@@ -80,7 +67,7 @@ class Booking(AuditModel):
         
     @property
     def total_profit(self):
-        return self.total_service_charge - self.total_discount - self.total_supplier_cost
+        return self.total_service_charge - self.total_supplier_cost
 
 
 class ServiceType(AuditModel):
@@ -98,7 +85,12 @@ class ServiceType(AuditModel):
 
 
 class BookingService(AuditModel):
-    booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name='services')
+    booking = models.ForeignKey(
+        Booking, 
+        on_delete=models.CASCADE, 
+        related_name='services',
+        limit_choices_to={'locked_at__isnull': True}
+    )
     display_order = models.PositiveIntegerField(default=1)
     service_type = models.ForeignKey(ServiceType, on_delete=models.PROTECT)
     service_provider = models.CharField(max_length=100, blank=True)
@@ -110,54 +102,28 @@ class BookingService(AuditModel):
     reference_number = models.CharField(max_length=50, blank=True, db_index=True)
     status = models.CharField(max_length=50, choices=BookingServiceStatus.choices, default=BookingServiceStatus.PENDING, db_index=True)
     currency = models.CharField(max_length=3, default='INR', editable=False)
-    supplier_cost = models.DecimalField(max_digits=12, decimal_places=2, default=ZERO_AMOUNT)
-    discount = models.DecimalField(max_digits=12, decimal_places=2, default=ZERO_AMOUNT)
-    service_charge = models.DecimalField(max_digits=12, decimal_places=2, default=ZERO_AMOUNT)
-    is_taxable = models.BooleanField(default=True)
     remarks = models.TextField(blank=True)
 
     class Meta:
         verbose_name = "Booking Service"
         verbose_name_plural = "Booking Services"
         ordering = ['display_order']
-        constraints = [
-            models.CheckConstraint(
-                condition=models.Q(service_charge__gte=ZERO_AMOUNT),
-                name='booking_service_service_charge_gte_0'
-            ),
-            models.CheckConstraint(
-                condition=models.Q(supplier_cost__gte=ZERO_AMOUNT),
-                name='booking_service_supplier_cost_gte_0'
-            ),
-            models.CheckConstraint(
-                condition=models.Q(discount__gte=ZERO_AMOUNT),
-                name='booking_service_discount_gte_0'
-            )
-        ]
 
     def __str__(self):
         return f"{self.service_type.name} for {self.booking.booking_number}"
 
     @property
-    def net_price(self):
-        return self.service_charge - self.discount
+    def total_supplier_cost(self):
+        return sum(t.supplier_cost for t in self.booking_travelers.exclude(passenger_status='CANCELLED'))
+
+    @property
+    def total_service_charge(self):
+        return sum(t.service_charge for t in self.booking_travelers.exclude(passenger_status='CANCELLED'))
 
     @property
     def profit(self):
-        return self.net_price - self.supplier_cost
+        return self.total_service_charge - self.total_supplier_cost
 
-    def delete(self, *args, **kwargs):
-        from django.core.exceptions import ValidationError
-        if hasattr(self, 'invoice_lines') and self.invoice_lines.exists():
-            raise ValidationError("Cannot delete BookingService that is linked to an InvoiceLine.")
-        if hasattr(self, 'credit_note_lines') and self.credit_note_lines.exists():
-            raise ValidationError("Cannot delete BookingService that is linked to a CreditNoteLine.")
-        super().delete(*args, **kwargs)
-
-    def clean(self):
-        from django.core.exceptions import ValidationError
-        if self.journey_start and self.journey_end and self.journey_end < self.journey_start:
-            raise ValidationError({'journey_end': 'Journey end cannot be before journey start.'})
 
 class BookingTraveler(AuditModel):
     booking_service = models.ForeignKey(BookingService, on_delete=models.CASCADE, related_name='booking_travelers')
@@ -166,14 +132,12 @@ class BookingTraveler(AuditModel):
     ticket_number = models.CharField(max_length=50, blank=True)
     seat_details = models.CharField(max_length=20, blank=True)
     check_in_status = models.CharField(max_length=50, blank=True)
-    fare = models.DecimalField(max_digits=10, decimal_places=2, default=ZERO_AMOUNT)
+    
+    supplier_cost = models.DecimalField(max_digits=12, decimal_places=2, default=ZERO_AMOUNT)
+    service_charge = models.DecimalField(max_digits=12, decimal_places=2, default=ZERO_AMOUNT)
+    is_gst_applicable = models.BooleanField(default=True)
+    
     baggage = models.CharField(max_length=100, blank=True)
-
-    def delete(self, *args, **kwargs):
-        from django.core.exceptions import ValidationError
-        if hasattr(self, 'credit_note_lines') and self.credit_note_lines.exists():
-            raise ValidationError("Cannot delete BookingTraveler that is linked to a CreditNoteLine.")
-        super().delete(*args, **kwargs)
 
     class Meta:
         verbose_name = "Booking Traveler"
@@ -184,8 +148,12 @@ class BookingTraveler(AuditModel):
                 name="unique_booking_service_traveler"
             ),
             models.CheckConstraint(
-                condition=models.Q(fare__gte=ZERO_AMOUNT),
-                name='booking_traveler_fare_gte_0'
+                condition=models.Q(supplier_cost__gte=ZERO_AMOUNT),
+                name='booking_traveler_supplier_cost_gte_0'
+            ),
+            models.CheckConstraint(
+                condition=models.Q(service_charge__gte=ZERO_AMOUNT),
+                name='booking_traveler_service_charge_gte_0'
             )
         ]
 
