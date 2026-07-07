@@ -136,17 +136,17 @@ class InvoiceAdmin(ModelAdmin):
             for a in allocations:
                 from django.urls import reverse
                 from apps.invoices.choices import InvoiceStatus
-                cn_url = reverse('admin:credit_notes_creditnote_change', args=[a.credit_note.id])
-                del_url = reverse('admin:credit_notes_creditallocation_delete', args=[a.id])
                 next_url = reverse('admin:invoices_invoice_change', args=[obj.id])
-                del_url += f'?next={next_url}'
                 
-                del_btn = ""
+                cn_url = reverse('admin:credit_notes_creditnote_change', args=[a.credit_note.id])
+                del_url = reverse('admin:credit_notes_creditallocation_delete', args=[a.id]) + f'?next={next_url}'
+                
+                actions_html = ""
                 if obj.status != InvoiceStatus.CLOSED:
-                    del_btn = f'<a href="{del_url}" style="color: #ef4444; font-size: 10px; margin-left: 8px; text-decoration: none; border: 1px solid #ef4444; padding: 1px 4px; border-radius: 3px;" title="Deallocate">❌ Remove</a>'
+                    actions_html += f'<a href="{del_url}" style="color: #ef4444; font-size: 10px; margin-left: 8px; text-decoration: none; border: 1px solid #ef4444; padding: 1px 4px; border-radius: 3px;" title="Deallocate">❌ Remove</a>'
                     
                 html += f'<div style="display: flex; justify-content: space-between; margin-bottom: 2px; align-items: center;">'
-                html += f'<span><a href="{cn_url}" style="color: #8b5cf6; text-decoration: underline;">{a.credit_note.number}</a> {del_btn}</span>'
+                html += f'<span><a href="{cn_url}" style="color: #8b5cf6; text-decoration: underline;">{a.credit_note.number}</a> {actions_html}</span>'
                 html += f'<span>- {obj.currency} {a.amount}</span></div>'
             html += '</div></details>'
             
