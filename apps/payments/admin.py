@@ -11,12 +11,12 @@ class PaymentAdmin(ModelAdmin):
     autocomplete_fields = ['invoice', 'received_by']
     
     def has_change_permission(self, request, obj=None):
-        return False
+        return True
         
     def has_delete_permission(self, request, obj=None):
-        return False
+        return True
         
     def get_readonly_fields(self, request, obj=None):
         if obj:
-            return [f.name for f in self.model._meta.fields]
+            return ['invoice'] # Invoice shouldn't be changed after creation
         return []

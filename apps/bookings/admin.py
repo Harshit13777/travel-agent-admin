@@ -85,7 +85,9 @@ class BookingTravelerInline(TabularInline):
         ).first()
         if cancellation:
             from django.utils.html import format_html
-            return format_html('<span style="color:red;font-weight:bold;">CANCELLED (Refund: {})</span>', cancellation.total_refund)
+            from django.urls import reverse
+            edit_url = reverse('admin:cancellations_bookingcancellation_change', args=[cancellation.id])
+            return format_html('<a href="{}" style="color:red;font-weight:bold;text-decoration:underline;">CANCELLED (Refund: {})</a>', edit_url, cancellation.total_refund)
             
         booking = obj.booking_service.booking
         if booking.is_locked:
@@ -194,7 +196,12 @@ class BookingAdmin(ModelAdmin):
         from django.urls import reverse
         if hasattr(obj, 'invoice'):
             url = reverse('admin:invoices_invoice_change', args=[obj.invoice.id])
-            return format_html('<a href="{}" style="color: #3b82f6; font-weight: bold;">View Invoice {}</a>', url, obj.invoice.invoice_number)
+            return format_html(
+                '<a href="{}" style="color: #3b82f6; font-weight: bold;">View Invoice {}</a><br><span style="color: #6b7280; font-size: 0.9em;">(Balance Due: {})</span>', 
+                url, 
+                obj.invoice.invoice_number,
+                obj.invoice.balance_due
+            )
         return "No Invoice Generated"
     invoice_link.short_description = "Related Invoice"
 
