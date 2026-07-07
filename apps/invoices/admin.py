@@ -306,7 +306,7 @@ class InvoiceAdmin(ModelAdmin):
         try:
             cn = CreditNoteService.generate_from_overpayment(invoice, request.user)
             messages.success(request, f"Credit Note {cn.number} generated successfully.")
-            return redirect('admin:credit_notes_creditnote_change', cn.id)
+            return redirect('admin:invoices_invoice_change', object_id)
         except Exception as e:
             messages.error(request, str(e))
             return redirect('admin:invoices_invoice_change', object_id)
