@@ -61,12 +61,10 @@ class Invoice(AuditModel):
     @property
     def current_invoice_value(self):
         from apps.cancellations.models import BookingCancellation
-        from apps.cancellations.choices import CancellationStatus
         from django.db.models import Sum
         
         refunds = BookingCancellation.objects.filter(
-            invoice_line_traveler__invoice_line__invoice=self,
-            status=CancellationStatus.ACTIVE
+            invoice_line_traveler__invoice_line__invoice=self
         ).aggregate(
             t_sup=Sum('supplier_refund'),
             t_ser=Sum('service_refund'),

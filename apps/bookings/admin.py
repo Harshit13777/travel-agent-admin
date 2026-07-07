@@ -53,17 +53,15 @@ class BookingTravelerForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from apps.bookings.choices import PassengerStatus
-        
-        if self.instance and self.instance.pk and self.instance.passenger_status == PassengerStatus.CANCELLED:
-            # Completely lock this row if the passenger is cancelled
-            for field_name in self.fields:
-                self.fields[field_name].disabled = True
-        else:
-            # Remove CANCELLED from the dropdown for active passengers and new passengers
-            if 'passenger_status' in self.fields:
-                choices = self.fields['passenger_status'].choices
-                self.fields['passenger_status'].choices = [c for c in choices if c[0] != PassengerStatus.CANCELLED]
+        if self.instance and self.instance.pk:
+            from apps.cancellations.models import BookingCancellation
+            has_cancellation = BookingCancellation.objects.filter(
+                invoice_line_traveler__booking_traveler=self.instance
+            ).exists()
+            if has_cancellation:
+                # Completely lock this row if the passenger is cancelled
+                for field_name in self.fields:
+                    self.fields[field_name].disabled = True
 
 
 class BookingTravelerInline(TabularInline):
@@ -73,9 +71,33 @@ class BookingTravelerInline(TabularInline):
     autocomplete_fields = ['traveler']
 
     def get_readonly_fields(self, request, obj=None):
+        base = ['cancellation_info']
         if obj and obj.booking.is_locked:
-            return ['traveler', 'supplier_cost', 'service_charge', 'is_gst_applicable']
-        return []
+            base.extend(['traveler', 'supplier_cost', 'service_charge', 'is_gst_applicable'])
+        return base
+        
+    def cancellation_info(self, obj):
+        if not obj or not obj.pk:
+            return "Active"
+        from apps.cancellations.models import BookingCancellation
+        cancellation = BookingCancellation.objects.filter(
+            invoice_line_traveler__booking_traveler=obj
+        ).first()
+        if cancellation:
+            from django.utils.html import format_html
+            return format_html('<span style="color:red;font-weight:bold;">CANCELLED (Refund: {})</span>', cancellation.total_refund)
+            
+        booking = obj.booking_service.booking
+        if booking.is_locked:
+            invoice_snapshot = obj.invoice_snapshots.first()
+            if invoice_snapshot:
+                from django.utils.html import format_html
+                from django.urls import reverse
+                add_url = reverse('admin:cancellations_bookingcancellation_add') + f'?invoice_line_traveler={invoice_snapshot.id}'
+                return format_html('<a href="{}" style="background-color: #ef4444; color: white; padding: 4px 8px; text-decoration: none; border-radius: 4px; font-weight: bold;">Cancel Passenger</a>', add_url)
+                
+        return "Active"
+    cancellation_info.short_description = "Cancellation Status"
         
     def has_add_permission(self, request, obj=None):
         if obj and obj.booking.is_locked:
@@ -139,23 +161,9 @@ class BookingAdmin(ModelAdmin):
     autocomplete_fields = ['customer', 'assigned_to']
     list_select_related = ['customer', 'assigned_to']
     inlines = [BookingServiceInline]
-    actions = [action_confirm_booking, action_generate_invoice, 'action_cancellation_wizard']
+    actions = [action_confirm_booking, action_generate_invoice]
 
-    @admin.action(description="Cancel Passengers or Services (Wizard)")
-    def action_cancellation_wizard(self, request, queryset):
-        from django.shortcuts import redirect
-        from django.contrib import messages
-        
-        if queryset.count() != 1:
-            messages.error(request, "Please select exactly one Booking to initiate cancellation.")
-            return
-            
-        booking = queryset.first()
-        if not hasattr(booking, 'invoice'):
-            messages.error(request, "This booking does not have an Invoice generated yet.")
-            return
-            
-        return redirect('cancellation_wizard', invoice_id=booking.invoice.id)
+
 
     def get_readonly_fields(self, request, obj=None):
         if obj is None:

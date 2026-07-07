@@ -15,7 +15,6 @@ class PassengerStatus(models.TextChoices):
     CHECKED_IN = 'CHECKED_IN', 'Checked In'
     BOARDED = 'BOARDED', 'Boarded'
     COMPLETED = 'COMPLETED', 'Completed'
-    CANCELLED = 'CANCELLED', 'Cancelled'
     NO_SHOW = 'NO_SHOW', 'No Show'
 
 class BookingSource(models.TextChoices):

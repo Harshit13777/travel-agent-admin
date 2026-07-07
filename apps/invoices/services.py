@@ -40,7 +40,7 @@ def generate_invoice(booking: Booking, user=None, applied_credit_notes=None) -> 
         
     # We now allow invoicing regardless of passenger statuses.
     # However, we must ensure that no passenger has 0 supplier/service costs before locking the invoice.
-    travelers_to_invoice = BookingTraveler.objects.filter(booking_service__booking=booking).exclude(passenger_status='CANCELLED')
+    travelers_to_invoice = BookingTraveler.objects.filter(booking_service__booking=booking)
     
     if not travelers_to_invoice.exists():
         raise ValidationError("No active passengers to invoice.")
@@ -94,7 +94,7 @@ def generate_invoice(booking: Booking, user=None, applied_credit_notes=None) -> 
         )
         
         for service in services:
-            travelers = service.booking_travelers.exclude(passenger_status='CANCELLED')
+            travelers = service.booking_travelers.all()
             if not travelers.exists():
                 continue
                 
