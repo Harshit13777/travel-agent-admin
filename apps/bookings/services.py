@@ -327,24 +327,78 @@ def update_booking_traveler(booking_traveler, user=None):
     """
     if booking_traveler.pk:
         original = BookingTraveler.objects.get(pk=booking_traveler.pk)
+        
+        from apps.bookings.choices import PassengerStatus
+        if original.passenger_status == PassengerStatus.CANCELLED:
+            from django.core.exceptions import ValidationError
+            raise ValidationError(f"Cannot modify passenger {original.traveler.first_name} because they are cancelled.")
+            
         booking = booking_traveler.booking_service.booking
+        if booking_traveler.passenger_status == PassengerStatus.CANCELLED and original.passenger_status != PassengerStatus.CANCELLED:
+            if not booking.is_locked:
+                from django.core.exceptions import ValidationError
+                raise ValidationError(f"Cannot cancel passenger {original.traveler.first_name} because no invoice is generated. Delete the passenger instead.")
+                
+            from apps.cancellations.models import BookingCancellation
+            from apps.cancellations.choices import CancellationStatus
+            has_cancellation = BookingCancellation.objects.filter(
+                invoice_line_traveler__booking_traveler=booking_traveler,
+                status=CancellationStatus.ACTIVE
+            ).exists()
+            if not has_cancellation:
+                from django.core.exceptions import ValidationError
+                raise ValidationError("Must use the Cancellation Wizard to cancel a passenger.")
+                
         if booking.is_locked:
             if (original.supplier_cost != booking_traveler.supplier_cost or 
                 original.service_charge != booking_traveler.service_charge or 
-                original.is_gst_applicable != booking_traveler.is_gst_applicable):
+                original.is_gst_applicable != booking_traveler.is_gst_applicable or
+                original.traveler_id != booking_traveler.traveler_id):
                 from django.core.exceptions import ValidationError
-                raise ValidationError("Cannot modify financial fields of a passenger after the booking is invoiced.")
+                raise ValidationError("Cannot modify financial fields or traveler reference after the booking is invoiced.")
+    
+    # Catch any new passengers trying to be created as CANCELLED directly
+    elif booking_traveler.passenger_status == 'CANCELLED':
+        from django.core.exceptions import ValidationError
+        raise ValidationError("Cannot create a new passenger with CANCELLED status.")
+        
     booking_traveler.save()
 
 
 def update_booking(booking, user=None):
+            
     if booking.journey_start and booking.journey_end and booking.journey_end < booking.journey_start:
         from django.core.exceptions import ValidationError
         raise ValidationError({'journey_end': 'Journey end cannot be before journey start.'})
     booking.save()
 
 def update_booking_service(booking_service, user=None):
+    if booking_service.pk:
+        original = BookingService.objects.get(pk=booking_service.pk)
+        if original.booking.is_locked:
+            if original.booking_id != booking_service.booking_id or original.service_type_id != booking_service.service_type_id or original.supplier_id != booking_service.supplier_id:
+                from django.core.exceptions import ValidationError
+                raise ValidationError("Cannot modify booking, service type, or supplier after the booking is invoiced.")
+            
     if booking_service.journey_start and booking_service.journey_end and booking_service.journey_end < booking_service.journey_start:
         from django.core.exceptions import ValidationError
         raise ValidationError({'journey_end': 'Journey end cannot be before journey start.'})
     booking_service.save()
+
+def delete_booking(booking, user=None):
+    from django.core.exceptions import ValidationError
+    if booking.is_locked:
+        raise ValidationError("Cannot delete a booking after an invoice has been generated.")
+    booking.delete()
+
+def delete_booking_service(booking_service, user=None):
+    from django.core.exceptions import ValidationError
+    if booking_service.booking.is_locked:
+        raise ValidationError("Cannot delete a service after an invoice has been generated.")
+    booking_service.delete()
+
+def delete_booking_traveler(booking_traveler, user=None):
+    from django.core.exceptions import ValidationError
+    if booking_traveler.booking_service.booking.is_locked:
+        raise ValidationError("Cannot delete a passenger after an invoice has been generated.")
+    booking_traveler.delete()

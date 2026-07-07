@@ -46,13 +46,13 @@ class CancellationValidationService:
             if (prev_service + proposed_service) > getattr(traveler, 'service_charge', Decimal('0.00')):
                 raise ValidationError(f"Total service refund exceeds snapshot limit for traveler {traveler.id}")
                 
-            if (prev_cgst + proposed_cgst) > getattr(traveler, 'cgst_amount', Decimal('0.00')):
+            if (prev_cgst + proposed_cgst) > getattr(traveler, 'cgst', Decimal('0.00')):
                 raise ValidationError(f"Total CGST refund exceeds snapshot limit for traveler {traveler.id}")
                 
-            if (prev_sgst + proposed_sgst) > getattr(traveler, 'sgst_amount', Decimal('0.00')):
+            if (prev_sgst + proposed_sgst) > getattr(traveler, 'sgst', Decimal('0.00')):
                 raise ValidationError(f"Total SGST refund exceeds snapshot limit for traveler {traveler.id}")
                 
-            if (prev_igst + proposed_igst) > getattr(traveler, 'igst_amount', Decimal('0.00')):
+            if (prev_igst + proposed_igst) > getattr(traveler, 'igst', Decimal('0.00')):
                 raise ValidationError(f"Total IGST refund exceeds snapshot limit for traveler {traveler.id}")
 
 class CancellationService:
@@ -103,6 +103,12 @@ class CancellationService:
             )
             cancellation.save() # Triggers DB checks and Unique constraints
             cancellations.append(cancellation)
+            
+            # Update the actual passenger status
+            if traveler.booking_traveler:
+                traveler.booking_traveler.passenger_status = 'CANCELLED'
+                from apps.bookings.services import update_booking_traveler
+                update_booking_traveler(traveler.booking_traveler, user=user)
             
         # Optional: You can call InvoiceCalculationService and CreditNoteService here if they exist in your project
         # from apps.invoices.services import InvoiceCalculationService

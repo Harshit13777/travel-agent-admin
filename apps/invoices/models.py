@@ -60,10 +60,29 @@ class Invoice(AuditModel):
         
     @property
     def current_invoice_value(self):
-        finalized_refunds = self.cancellations.filter(status='FINALIZED').aggregate(
-            total=Sum('total_refund')
-        )['total'] or Decimal("0.00")
-        return self.final_payable - finalized_refunds
+        from apps.cancellations.models import BookingCancellation
+        from apps.cancellations.choices import CancellationStatus
+        from django.db.models import Sum
+        
+        refunds = BookingCancellation.objects.filter(
+            invoice_line_traveler__invoice_line__invoice=self,
+            status=CancellationStatus.ACTIVE
+        ).aggregate(
+            t_sup=Sum('supplier_refund'),
+            t_ser=Sum('service_refund'),
+            t_c=Sum('cgst_refund'),
+            t_s=Sum('sgst_refund'),
+            t_i=Sum('igst_refund')
+        )
+        
+        total_refund = (
+            (refunds['t_sup'] or Decimal("0.00")) +
+            (refunds['t_ser'] or Decimal("0.00")) +
+            (refunds['t_c'] or Decimal("0.00")) +
+            (refunds['t_s'] or Decimal("0.00")) +
+            (refunds['t_i'] or Decimal("0.00"))
+        )
+        return self.final_payable - total_refund
 
     @property
     def balance_due(self):

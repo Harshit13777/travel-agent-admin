@@ -9,10 +9,9 @@ class BookingServiceInline(TabularInline):
     exclude = ['display_order']
 
     def get_readonly_fields(self, request, obj=None):
-        fields = ['passengers_summary', 'total_supplier_cost', 'total_service_charge', 'currency']
         if obj and obj.is_locked:
-            fields.append('service_type')
-        return fields
+            return [f.name for f in self.model._meta.fields] + ['passengers_summary']
+        return ['passengers_summary', 'total_supplier_cost', 'total_service_charge', 'currency']
 
     def passengers_summary(self, obj):
         if not obj.pk:
@@ -45,8 +44,31 @@ class BookingServiceInline(TabularInline):
             return False
         return super().has_delete_permission(request, obj)
 
+from django import forms
+
+class BookingTravelerForm(forms.ModelForm):
+    class Meta:
+        model = BookingTraveler
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from apps.bookings.choices import PassengerStatus
+        
+        if self.instance and self.instance.pk and self.instance.passenger_status == PassengerStatus.CANCELLED:
+            # Completely lock this row if the passenger is cancelled
+            for field_name in self.fields:
+                self.fields[field_name].disabled = True
+        else:
+            # Remove CANCELLED from the dropdown for active passengers and new passengers
+            if 'passenger_status' in self.fields:
+                choices = self.fields['passenger_status'].choices
+                self.fields['passenger_status'].choices = [c for c in choices if c[0] != PassengerStatus.CANCELLED]
+
+
 class BookingTravelerInline(TabularInline):
     model = BookingTraveler
+    form = BookingTravelerForm
     extra = 1
     autocomplete_fields = ['traveler']
 
@@ -107,34 +129,13 @@ class InvoiceStatusFilter(SimpleListFilter):
             return queryset.filter(locked_at__isnull=True)
         return queryset
 
-class BookingStatusFilter(SimpleListFilter):
-    title = 'Booking Status'
-    parameter_name = 'booking_status'
 
-    def lookups(self, request, model_admin):
-        from apps.bookings.choices import BookingStatus
-        return [(status.value.lower(), status.label) for status in BookingStatus]
-
-    def queryset(self, request, queryset):
-        if not self.value():
-            return queryset
-            
-        # Status is a derived @property, so we filter in Python
-        # and return the matching IDs to the queryset
-        matching_ids = []
-        target_status = self.value().upper()
-        
-        for booking in queryset:
-            if booking.status == target_status:
-                matching_ids.append(booking.id)
-                
-        return queryset.filter(id__in=matching_ids)
 
 @admin.register(Booking)
 class BookingAdmin(ModelAdmin):
     list_display = ['booking_number', 'title', 'customer', 'passenger_list', 'status', 'priority']
     search_fields = ['booking_number', 'title', 'customer__name']
-    list_filter = [InvoiceStatusFilter, BookingStatusFilter, 'priority', 'booking_source']
+    list_filter = [InvoiceStatusFilter, 'status', 'priority', 'booking_source']
     autocomplete_fields = ['customer', 'assigned_to']
     list_select_related = ['customer', 'assigned_to']
     inlines = [BookingServiceInline]
@@ -162,8 +163,23 @@ class BookingAdmin(ModelAdmin):
             
         readonly = ['booking_number', 'locked_at', 'invoice_link', 'passenger_list']
         if obj.is_locked:
-            readonly.extend(['customer', 'booking_source'])
+            readonly.append('customer')
+            
         return readonly
+
+    def has_delete_permission(self, request, obj=None):
+        if obj and obj.is_locked:
+            return False
+        return super().has_delete_permission(request, obj)
+        
+    def delete_model(self, request, obj):
+        from apps.bookings.services import delete_booking
+        delete_booking(obj, user=request.user)
+
+    def delete_queryset(self, request, queryset):
+        from apps.bookings.services import delete_booking
+        for obj in queryset:
+            delete_booking(obj, user=request.user)
 
     def invoice_link(self, obj):
         from django.utils.html import format_html
@@ -227,10 +243,24 @@ class BookingServiceAdmin(ModelAdmin):
     exclude = ['display_order']
 
     def get_readonly_fields(self, request, obj=None):
-        fields = ['total_supplier_cost', 'total_service_charge', 'currency']
+        readonly = ['total_supplier_cost', 'total_service_charge', 'currency']
         if obj and obj.booking.is_locked:
-            fields.extend(['booking', 'service_type', 'supplier'])
-        return fields
+            readonly.extend(['booking', 'service_type', 'supplier'])
+        return readonly
+
+    def has_delete_permission(self, request, obj=None):
+        if obj and obj.booking.is_locked:
+            return False
+        return super().has_delete_permission(request, obj)
+        
+    def delete_model(self, request, obj):
+        from apps.bookings.services import delete_booking_service
+        delete_booking_service(obj, user=request.user)
+
+    def delete_queryset(self, request, queryset):
+        from apps.bookings.services import delete_booking_service
+        for obj in queryset:
+            delete_booking_service(obj, user=request.user)
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "booking":

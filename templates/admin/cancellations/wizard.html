@@ -20,32 +20,46 @@
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
             <tr style="background-color: #f1f5f9; text-align: left;">
                 <th style="padding: 10px; border: 1px solid #e2e8f0;">Passenger</th>
-                <th style="padding: 10px; border: 1px solid #e2e8f0;">Ticket</th>
-                <th style="padding: 10px; border: 1px solid #e2e8f0;">Service Charge</th>
-                <th style="padding: 10px; border: 1px solid #e2e8f0;">Tax Total</th>
-                <th style="padding: 10px; border: 1px solid #e2e8f0;">Action</th>
+                <th style="padding: 10px; border: 1px solid #e2e8f0;">Service Charge<br><small>(Actual)</small></th>
+                <th style="padding: 10px; border: 1px solid #e2e8f0;">Supplier Cost<br><small>(Actual)</small></th>
+                <th style="padding: 10px; border: 1px solid #e2e8f0;">CGST<br><small>(Actual)</small></th>
+                <th style="padding: 10px; border: 1px solid #e2e8f0;">SGST<br><small>(Actual)</small></th>
+                <th style="padding: 10px; border: 1px solid #e2e8f0;">IGST<br><small>(Actual)</small></th>
+                <th style="padding: 10px; border: 1px solid #e2e8f0;">Cancel & Refund</th>
             </tr>
             {% for t in travelers %}
             <tr>
-                <td style="padding: 10px; border: 1px solid #e2e8f0;">{{ t.traveler_name }}</td>
-                <td style="padding: 10px; border: 1px solid #e2e8f0;">{{ t.ticket_number }}</td>
+                <td style="padding: 10px; border: 1px solid #e2e8f0;">
+                    <strong>{{ t.traveler_name }}</strong><br>
+                    <small>{{ t.ticket_number }}</small>
+                </td>
                 <td style="padding: 10px; border: 1px solid #e2e8f0;">{{ t.service_charge }}</td>
-                <td style="padding: 10px; border: 1px solid #e2e8f0;">{{ t.cgst|add:t.sgst|add:t.igst }}</td>
+                <td style="padding: 10px; border: 1px solid #e2e8f0;">{{ t.supplier_cost }}</td>
+                <td style="padding: 10px; border: 1px solid #e2e8f0;">{{ t.cgst }}</td>
+                <td style="padding: 10px; border: 1px solid #e2e8f0;">{{ t.sgst }}</td>
+                <td style="padding: 10px; border: 1px solid #e2e8f0;">{{ t.igst }}</td>
                 <td style="padding: 10px; border: 1px solid #e2e8f0;">
                     {% if t.id in cancelled_traveler_ids %}
                         <span style="color: red; font-weight: bold;">Already Cancelled</span>
                     {% else %}
-                        <form method="POST" style="display: flex; gap: 10px; align-items: center;">
+                        <form method="POST" style="display: flex; flex-direction: column; gap: 5px;">
                             {% csrf_token %}
                             <input type="hidden" name="cancel_type" value="PASSENGER">
                             <input type="hidden" name="target_id" value="{{ t.id }}">
                             
-                            <input type="number" step="0.01" name="service_refund" placeholder="Service Refund" style="padding: 5px; width: 120px;" required>
-                            <input type="number" step="0.01" name="cgst_refund" placeholder="CGST Refund" value="0.00" style="padding: 5px; width: 100px;">
-                            <input type="number" step="0.01" name="sgst_refund" placeholder="SGST Refund" value="0.00" style="padding: 5px; width: 100px;">
-                            <input type="text" name="reason" placeholder="Reason" style="padding: 5px; width: 150px;">
-                            
-                            <button type="submit" style="background-color: #ef4444; color: white; padding: 5px 15px; border: none; cursor: pointer; border-radius: 4px;">Cancel Passenger</button>
+                            <div style="display: flex; gap: 5px;">
+                                <input type="number" step="0.01" name="service_refund" placeholder="Service Refund" min="0" max="{{ t.service_charge }}" style="padding: 5px; width: 110px;" required>
+                                <input type="number" step="0.01" name="supplier_refund" placeholder="Supplier Refund" min="0" max="{{ t.supplier_cost }}" style="padding: 5px; width: 110px;" required>
+                            </div>
+                            <div style="display: flex; gap: 5px;">
+                                <input type="number" step="0.01" name="cgst_refund" placeholder="CGST" value="0.00" min="0" max="{{ t.cgst }}" style="padding: 5px; width: 70px;">
+                                <input type="number" step="0.01" name="sgst_refund" placeholder="SGST" value="0.00" min="0" max="{{ t.sgst }}" style="padding: 5px; width: 70px;">
+                                <input type="number" step="0.01" name="igst_refund" placeholder="IGST" value="0.00" min="0" max="{{ t.igst }}" style="padding: 5px; width: 70px;">
+                            </div>
+                            <div style="display: flex; gap: 5px; align-items: center;">
+                                <input type="text" name="reason" placeholder="Reason" style="padding: 5px; flex-grow: 1;">
+                                <button type="submit" style="background-color: #ef4444; color: white; padding: 5px 15px; border: none; cursor: pointer; border-radius: 4px;">Cancel</button>
+                            </div>
                         </form>
                     {% endif %}
                 </td>

@@ -32,18 +32,22 @@ def generate_invoice(booking: Booking, user=None, applied_credit_notes=None) -> 
     - Log BookingHistory using INVOICE_GENERATED.
     - Run inside transaction.atomic().
     """
-    if booking.status != BookingStatus.CONFIRMED:
-        raise ValidationError("Booking must be Confirmed to generate an invoice.")
+    if hasattr(booking, 'invoice'):
+        raise ValidationError("An invoice already exists for this booking.")
         
     if not booking.services.exists():
         raise ValidationError("Booking must have at least one service to generate an invoice.")
         
-    if hasattr(booking, 'invoice'):
-        raise ValidationError("An invoice already exists for this booking.")
+    # We now allow invoicing regardless of passenger statuses.
+    # However, we must ensure that no passenger has 0 supplier/service costs before locking the invoice.
+    travelers_to_invoice = BookingTraveler.objects.filter(booking_service__booking=booking).exclude(passenger_status='CANCELLED')
+    
+    if not travelers_to_invoice.exists():
+        raise ValidationError("No active passengers to invoice.")
         
-    # Check for any pending passengers
-    if BookingTraveler.objects.filter(booking_service__booking=booking, passenger_status=PassengerStatus.PENDING).exists():
-        raise ValidationError("Cannot generate invoice while there are passengers with PENDING status.")
+    for t in travelers_to_invoice:
+        if t.supplier_cost <= Decimal("0.00") and t.service_charge <= Decimal("0.00"):
+            raise ValidationError(f"Passenger {t.traveler.first_name} has no financial costs set. Cannot generate invoice.")
     
     with transaction.atomic():
         # 1. Load all services (we filter out cancelled travelers later)

@@ -1,12 +1,11 @@
 from django.db import models
 
 class BookingStatus(models.TextChoices):
-    DRAFT = 'DRAFT', 'Draft'
-    IN_PROGRESS = 'IN_PROGRESS', 'In Progress'
+    INQUIRY = 'INQUIRY', 'Inquiry / Lead'
+    QUOTATION = 'QUOTATION', 'Quotation Sent'
+    PROCESSING = 'PROCESSING', 'Processing'
     CONFIRMED = 'CONFIRMED', 'Confirmed'
-    PARTIALLY_CANCELLED = 'PARTIALLY_CANCELLED', 'Partially Cancelled'
-    COMPLETED = 'COMPLETED', 'Completed'
-    CANCELLED = 'CANCELLED', 'Cancelled'
+    COMPLETED = 'COMPLETED', 'Completed / Closed'
 
 class PassengerStatus(models.TextChoices):
     PENDING = 'PENDING', 'Pending'

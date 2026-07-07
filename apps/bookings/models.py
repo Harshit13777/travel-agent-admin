@@ -15,6 +15,7 @@ class Booking(AuditModel):
     title = models.CharField(max_length=200, blank=True)
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name='bookings')
     assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_bookings')
+    status = models.CharField(max_length=50, choices=BookingStatus.choices, default=BookingStatus.INQUIRY)
     booking_source = models.CharField(max_length=50, choices=BookingSource.choices, default=BookingSource.WALK_IN)
     priority = models.CharField(max_length=50, choices=Priority.choices, default=Priority.MEDIUM)
     journey_start = models.DateField(null=True, blank=True, db_index=True)
@@ -31,25 +32,7 @@ class Booking(AuditModel):
         title_str = f" - {self.title}" if self.title else ""
         return f"{self.booking_number}{title_str} ({self.customer.name})"
 
-    @property
-    def status(self):
-        from apps.bookings.choices import BookingStatus, PassengerStatus
-        travelers = self.services.values_list('booking_travelers__passenger_status', flat=True)
-        if not travelers or all(s is None for s in travelers):
-            return BookingStatus.DRAFT
-            
-        statuses = set(s for s in travelers if s is not None)
-        
-        if statuses == {PassengerStatus.CANCELLED}:
-            return BookingStatus.CANCELLED
-        if statuses == {PassengerStatus.COMPLETED}:
-            return BookingStatus.COMPLETED
-        if statuses == {PassengerStatus.PENDING}:
-            return BookingStatus.IN_PROGRESS
-        if PassengerStatus.CANCELLED in statuses:
-            return BookingStatus.PARTIALLY_CANCELLED
-            
-        return BookingStatus.CONFIRMED
+
 
     @property
     def total_supplier_cost(self):
