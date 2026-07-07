@@ -127,10 +127,33 @@ class InvoiceAdmin(ModelAdmin):
         
         # Total Outstanding
         color = "#10b981" if obj.balance_due <= 0 else "#ef4444"
-        html += f'<div style="display: flex; justify-content: space-between; font-size: 16px; font-weight: bold;">'
+        html += f'<div style="display: flex; justify-content: space-between; font-size: 16px; font-weight: bold; margin-bottom: 16px;">'
         html += f'<span>TOTAL OUTSTANDING:</span>'
         html += f'<span style="color: {color};">{obj.currency} {obj.balance_due}</span></div>'
         
+        # Action Buttons
+        from django.urls import reverse
+        from apps.invoices.choices import InvoiceStatus
+        
+        buttons_html = '<div style="display: flex; gap: 10px;">'
+        
+        if obj.status != InvoiceStatus.CLOSED:
+            close_url = reverse('admin:invoices_invoice_close_btn', args=[obj.id])
+            buttons_html += f'<a href="{close_url}" style="display: inline-block; background-color: #f59e0b; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-family: sans-serif; font-size: 13px; font-weight: bold;">🔒 Close Invoice (Lock Financials)</a>'
+        elif obj.status == InvoiceStatus.CLOSED:
+            # Reopen Button
+            reopen_url = reverse('admin:invoices_invoice_reopen_btn', args=[obj.id])
+            buttons_html += f'<a href="{reopen_url}" style="display: inline-block; background-color: #3b82f6; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-family: sans-serif; font-size: 13px; font-weight: bold;">🔓 Re-open Invoice</a>'
+            
+            # Credit Note Button (if negative balance)
+            if obj.balance_due < 0:
+                cn_url = reverse('admin:invoices_invoice_generate_cn_btn', args=[obj.id])
+                buttons_html += f'<a href="{cn_url}" style="display: inline-block; background-color: #8b5cf6; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-family: sans-serif; font-size: 13px; font-weight: bold; margin-left: 10px;">✨ Generate Credit Note</a>'
+            
+            
+        buttons_html += '</div>'
+        
+        html += buttons_html
         html += '</div>'
         return mark_safe(html)
     
@@ -148,39 +171,65 @@ class InvoiceAdmin(ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
-    actions = ['action_cancellation_wizard', 'action_close_invoice', 'action_generate_credit_note']
-
-    @admin.action(description="Close Invoice (Lock Financials)")
-    def action_close_invoice(self, request, queryset):
+    def get_urls(self):
+        from django.urls import path
+        urls = super().get_urls()
+        custom_urls = [
+            path('<path:object_id>/close-invoice/', self.admin_site.admin_view(self.close_invoice_view), name='invoices_invoice_close_btn'),
+            path('<path:object_id>/reopen-invoice/', self.admin_site.admin_view(self.reopen_invoice_view), name='invoices_invoice_reopen_btn'),
+            path('<path:object_id>/generate-credit-note/', self.admin_site.admin_view(self.generate_cn_view), name='invoices_invoice_generate_cn_btn'),
+        ]
+        return custom_urls + urls
+        
+    def close_invoice_view(self, request, object_id):
+        from django.shortcuts import get_object_or_404, redirect
         from django.contrib import messages
         from apps.invoices.choices import InvoiceStatus
-        count = 0
-        for inv in queryset:
-            if inv.status != InvoiceStatus.CLOSED:
-                inv.status = InvoiceStatus.CLOSED
-                inv.save(update_fields=['status'])
-                count += 1
-        messages.success(request, f"{count} invoice(s) closed and financially locked.")
-
-    @admin.action(description="Generate Credit Note from Overpayment")
-    def action_generate_credit_note(self, request, queryset):
-        from django.shortcuts import redirect
+        
+        invoice = get_object_or_404(Invoice, pk=object_id)
+        if invoice.status != InvoiceStatus.CLOSED:
+            invoice.status = InvoiceStatus.CLOSED
+            invoice.save(update_fields=['status'])
+            messages.success(request, f"Invoice {invoice.invoice_number} closed and financially locked.")
+        else:
+            messages.info(request, "Invoice is already closed.")
+            
+        return redirect('admin:invoices_invoice_change', object_id)
+        
+    def reopen_invoice_view(self, request, object_id):
+        from django.shortcuts import get_object_or_404, redirect
         from django.contrib import messages
+        from apps.invoices.choices import InvoiceStatus
+        
+        invoice = get_object_or_404(Invoice, pk=object_id)
+        
+        if invoice.issued_credit_notes.filter(status='ACTIVE').exists():
+            messages.error(request, "Cannot re-open: This invoice has generated Credit Notes. Please VOID the Credit Note(s) first before re-opening.")
+            return redirect('admin:invoices_invoice_change', object_id)
+            
+        if invoice.status == InvoiceStatus.CLOSED:
+            invoice.status = InvoiceStatus.ISSUED
+            invoice.save(update_fields=['status'])
+            messages.success(request, f"Invoice {invoice.invoice_number} re-opened successfully. Financials are unlocked.")
+        else:
+            messages.info(request, "Invoice is not closed.")
+            
+        return redirect('admin:invoices_invoice_change', object_id)
+
+    def generate_cn_view(self, request, object_id):
+        from django.shortcuts import get_object_or_404, redirect
+        from django.contrib import messages
+        from apps.invoices.choices import InvoiceStatus
         from apps.credit_notes.services import CreditNoteService
         
-        if queryset.count() != 1:
-            messages.error(request, "Please select exactly one Invoice.")
-            return
-            
-        invoice = queryset.first()
-        from apps.invoices.choices import InvoiceStatus
+        invoice = get_object_or_404(Invoice, pk=object_id)
         if invoice.status != InvoiceStatus.CLOSED:
             messages.error(request, "Invoice must be CLOSED before generating a Credit Note.")
-            return
+            return redirect('admin:invoices_invoice_change', object_id)
             
         if invoice.balance_due >= 0:
             messages.error(request, "Invoice does not have a negative balance.")
-            return
+            return redirect('admin:invoices_invoice_change', object_id)
             
         try:
             cn = CreditNoteService.generate_from_overpayment(invoice, request.user)
@@ -188,8 +237,9 @@ class InvoiceAdmin(ModelAdmin):
             return redirect('admin:credit_notes_creditnote_change', cn.id)
         except Exception as e:
             messages.error(request, str(e))
-            
-    @admin.action(description="Cancel Passengers or Services (Wizard)")
+            return redirect('admin:invoices_invoice_change', object_id)
+
+    actions = ['action_cancellation_wizard']
     def action_cancellation_wizard(self, request, queryset):
         from django.shortcuts import redirect
         from django.contrib import messages

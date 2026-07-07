@@ -61,8 +61,15 @@ class BookingCancellationForm(ModelForm):
         if not ilt:
             return cleaned_data
             
-        from apps.cancellations.services import CancellationValidationService
         from django.core.exceptions import ValidationError
+        from apps.invoices.choices import InvoiceStatus
+        if ilt.invoice_line.invoice.status == InvoiceStatus.CLOSED:
+            raise ValidationError("Cannot add or edit cancellations for a CLOSED invoice.")
+            
+        if not self.instance.pk and hasattr(ilt, 'cancellation') and ilt.cancellation.pk is not None:
+            raise ValidationError(f"Traveler {ilt.traveler_name} already has a cancellation record.")
+            
+        from apps.cancellations.services import CancellationValidationService
         
         refund_data = {
             ilt.id: {
@@ -153,9 +160,6 @@ class BookingCancellationAdmin(ModelAdmin):
         }
         
         try:
-            if obj.invoice_line_traveler.invoice_line.invoice.status == 'CLOSED':
-                raise ValidationError("Cannot add or edit cancellations for a CLOSED invoice.")
-                
             if not change:
                 cancellations = CancellationService.cancel_passengers(
                     travelers=[obj.invoice_line_traveler],
@@ -181,8 +185,7 @@ class BookingCancellationAdmin(ModelAdmin):
             # We add it as an error to the request context. 
             # Note: since save_model doesn't halt the redirect unless it raises, we MUST raise an exception 
             # or the admin will redirect to the list view acting as if it saved.
-            # However, raising ValidationError crashes Django Admin. 
-            # If the user absolutely doesn't want form validation, this will result in a 500 error screen on failure.
+            # Most validation should now happen in form.clean() to avoid this block entirely.
             raise e
     
     def get_readonly_fields(self, request, obj=None):

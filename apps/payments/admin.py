@@ -29,10 +29,3 @@ class PaymentAdmin(ModelAdmin):
         if obj:
             return ['invoice'] # Invoice shouldn't be changed after creation
         return []
-        
-    def save_model(self, request, obj, form, change):
-        from apps.invoices.choices import InvoiceStatus
-        if obj.invoice.status == InvoiceStatus.CLOSED:
-            from django.core.exceptions import ValidationError
-            raise ValidationError("Cannot add or edit payments for a CLOSED invoice.")
-        super().save_model(request, obj, form, change)

@@ -71,7 +71,7 @@ class CancellationService:
                 raise ValidationError("All travelers in a single cancellation request must belong to the same invoice.")
                 
             # Prevent multiple ACTIVE cancellations per traveler (also enforced by OneToOne)
-            if hasattr(traveler, 'cancellation'):
+            if hasattr(traveler, 'cancellation') and traveler.cancellation.pk is not None:
                 raise ValidationError(f"Traveler {traveler.id} already has a cancellation record.")
         
         # 2. Delegate to CancellationValidationService

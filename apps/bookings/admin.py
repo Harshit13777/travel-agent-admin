@@ -93,10 +93,14 @@ class BookingTravelerInline(TabularInline):
         if booking.is_locked:
             invoice_snapshot = obj.invoice_snapshots.first()
             if invoice_snapshot:
-                from django.utils.html import format_html
-                from django.urls import reverse
-                add_url = reverse('admin:cancellations_bookingcancellation_add') + f'?invoice_line_traveler={invoice_snapshot.id}'
-                return format_html('<a href="{}" style="background-color: #ef4444; color: white; padding: 4px 8px; text-decoration: none; border-radius: 4px; font-weight: bold;">Cancel Passenger</a>', add_url)
+                from apps.invoices.choices import InvoiceStatus
+                if invoice_snapshot.invoice_line.invoice.status != InvoiceStatus.CLOSED:
+                    from django.utils.html import format_html
+                    from django.urls import reverse
+                    add_url = reverse('admin:cancellations_bookingcancellation_add') + f'?invoice_line_traveler={invoice_snapshot.id}'
+                    return format_html('<a href="{}" style="background-color: #ef4444; color: white; padding: 4px 8px; text-decoration: none; border-radius: 4px; font-weight: bold;">Cancel Passenger</a>', add_url)
+                else:
+                    return "Active (Invoice Closed)"
                 
         return "Active"
     cancellation_info.short_description = "Cancellation Status"
