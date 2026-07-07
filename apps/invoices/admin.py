@@ -138,6 +138,8 @@ class InvoiceAdmin(ModelAdmin):
                 from apps.invoices.choices import InvoiceStatus
                 cn_url = reverse('admin:credit_notes_creditnote_change', args=[a.credit_note.id])
                 del_url = reverse('admin:credit_notes_creditallocation_delete', args=[a.id])
+                next_url = reverse('admin:invoices_invoice_change', args=[obj.id])
+                del_url += f'?next={next_url}'
                 
                 del_btn = ""
                 if obj.status != InvoiceStatus.CLOSED:
@@ -185,10 +187,11 @@ class InvoiceAdmin(ModelAdmin):
             
             # Apply Credit Note Button & Add Payment Button
             if obj.balance_due > 0:
-                apply_url = reverse('admin:credit_notes_creditallocation_add') + f'?invoice={obj.id}'
+                next_url = reverse('admin:invoices_invoice_change', args=[obj.id])
+                apply_url = reverse('admin:credit_notes_creditallocation_add') + f'?invoice={obj.id}&next={next_url}'
                 buttons_html += f'<a href="{apply_url}" style="display: inline-block; background-color: #10b981; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-family: sans-serif; font-size: 13px; font-weight: bold; margin-left: 10px;">💰 Apply Credit Note</a>'
                 
-                payment_url = reverse('admin:payments_payment_add') + f'?invoice={obj.id}'
+                payment_url = reverse('admin:payments_payment_add') + f'?invoice={obj.id}&next={next_url}'
                 buttons_html += f'<a href="{payment_url}" style="display: inline-block; background-color: #3b82f6; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-family: sans-serif; font-size: 13px; font-weight: bold; margin-left: 10px;">💸 Add Payment</a>'
         elif obj.status == InvoiceStatus.CLOSED:
             # Reopen Button

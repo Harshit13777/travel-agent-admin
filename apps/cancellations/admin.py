@@ -197,6 +197,35 @@ class BookingCancellationAdmin(ModelAdmin):
     def has_add_permission(self, request):
         return True # Handled in form clean or save_model
         
+    def response_add(self, request, obj, post_url_continue=None):
+        if '_addanother' not in request.POST and '_continue' not in request.POST:
+            from django.urls import reverse
+            from django.http import HttpResponseRedirect
+            try:
+                booking_id = obj.invoice_line_traveler.invoice_line.invoice.booking_id
+                return HttpResponseRedirect(reverse('admin:bookings_booking_change', args=[booking_id]))
+            except Exception:
+                pass
+        return super().response_add(request, obj, post_url_continue)
+        
+    def response_change(self, request, obj):
+        if '_addanother' not in request.POST and '_continue' not in request.POST and '_saveasnew' not in request.POST:
+            from django.urls import reverse
+            from django.http import HttpResponseRedirect
+            try:
+                booking_id = obj.invoice_line_traveler.invoice_line.invoice.booking_id
+                return HttpResponseRedirect(reverse('admin:bookings_booking_change', args=[booking_id]))
+            except Exception:
+                pass
+        return super().response_change(request, obj)
+        
+    def response_delete(self, request, obj_display, obj_id):
+        next_url = request.GET.get('next')
+        if next_url:
+            from django.http import HttpResponseRedirect
+            return HttpResponseRedirect(next_url)
+        return super().response_delete(request, obj_display, obj_id)
+        
     def has_change_permission(self, request, obj=None):
         if obj and obj.invoice_line_traveler.invoice_line.invoice.status == 'CLOSED':
             return False

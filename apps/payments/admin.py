@@ -44,3 +44,10 @@ class PaymentAdmin(ModelAdmin):
         if obj:
             return ['invoice'] # Invoice shouldn't be changed after creation
         return []
+
+    def response_add(self, request, obj, post_url_continue=None):
+        next_url = request.GET.get('next')
+        if next_url and '_addanother' not in request.POST and '_continue' not in request.POST:
+            from django.http import HttpResponseRedirect
+            return HttpResponseRedirect(next_url)
+        return super().response_add(request, obj, post_url_continue)

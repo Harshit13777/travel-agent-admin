@@ -138,3 +138,17 @@ class CreditAllocationAdmin(ModelAdmin):
         from apps.credit_notes.services import CreditNoteService
         for obj in queryset:
             CreditNoteService.deallocate_credit(obj.id)
+            
+    def response_add(self, request, obj, post_url_continue=None):
+        next_url = request.GET.get('next')
+        if next_url and '_addanother' not in request.POST and '_continue' not in request.POST:
+            from django.http import HttpResponseRedirect
+            return HttpResponseRedirect(next_url)
+        return super().response_add(request, obj, post_url_continue)
+        
+    def response_delete(self, request, obj_display, obj_id):
+        next_url = request.GET.get('next')
+        if next_url:
+            from django.http import HttpResponseRedirect
+            return HttpResponseRedirect(next_url)
+        return super().response_delete(request, obj_display, obj_id)
