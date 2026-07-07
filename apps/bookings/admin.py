@@ -88,11 +88,53 @@ def action_generate_invoice(modeladmin, request, queryset):
             from django.contrib import messages
             modeladmin.message_user(request, f"Error generating invoice for {booking.booking_number}: {str(e)}", level=messages.ERROR)
 
+from django.contrib.admin import SimpleListFilter
+
+class InvoiceStatusFilter(SimpleListFilter):
+    title = 'Invoice Status'
+    parameter_name = 'invoice_status'
+
+    def lookups(self, request, model_admin):
+        return (
+            ('invoiced', 'Invoiced'),
+            ('not_invoiced', 'Not Invoiced'),
+        )
+
+    def queryset(self, request, queryset):
+        if self.value() == 'invoiced':
+            return queryset.filter(locked_at__isnull=False)
+        if self.value() == 'not_invoiced':
+            return queryset.filter(locked_at__isnull=True)
+        return queryset
+
+class BookingStatusFilter(SimpleListFilter):
+    title = 'Booking Status'
+    parameter_name = 'booking_status'
+
+    def lookups(self, request, model_admin):
+        from apps.bookings.choices import BookingStatus
+        return [(status.value.lower(), status.label) for status in BookingStatus]
+
+    def queryset(self, request, queryset):
+        if not self.value():
+            return queryset
+            
+        # Status is a derived @property, so we filter in Python
+        # and return the matching IDs to the queryset
+        matching_ids = []
+        target_status = self.value().upper()
+        
+        for booking in queryset:
+            if booking.status == target_status:
+                matching_ids.append(booking.id)
+                
+        return queryset.filter(id__in=matching_ids)
+
 @admin.register(Booking)
 class BookingAdmin(ModelAdmin):
     list_display = ['booking_number', 'title', 'customer', 'passenger_list', 'status', 'priority']
     search_fields = ['booking_number', 'title', 'customer__name']
-    list_filter = ['priority', 'booking_source']
+    list_filter = [InvoiceStatusFilter, BookingStatusFilter, 'priority', 'booking_source']
     autocomplete_fields = ['customer', 'assigned_to']
     list_select_related = ['customer', 'assigned_to']
     inlines = [BookingServiceInline]
