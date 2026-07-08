@@ -46,11 +46,7 @@ class CreditNoteService:
         
         # Update credit note
         credit_note.allocated_amount += amount
-        if credit_note.allocated_amount >= credit_note.amount:
-            credit_note.status = CreditNoteStatus.FULLY_APPLIED
-        else:
-            credit_note.status = CreditNoteStatus.PARTIALLY_APPLIED
-        credit_note.save(update_fields=['allocated_amount', 'status'])
+        credit_note.save(update_fields=['allocated_amount'])
         
         # Update invoice payment status using central service if necessary,
         # but balance_due handles it via property. Just to trigger standard updates:
@@ -86,11 +82,7 @@ class CreditNoteService:
         
         # Update credit note
         credit_note.allocated_amount -= amount
-        if credit_note.allocated_amount <= Decimal("0.00"):
-            credit_note.status = CreditNoteStatus.ACTIVE
-        else:
-            credit_note.status = CreditNoteStatus.PARTIALLY_APPLIED
-        credit_note.save(update_fields=['allocated_amount', 'status'])
+        credit_note.save(update_fields=['allocated_amount'])
         
         # Trigger invoice update
         from apps.invoices.services import update_invoice_status
@@ -162,6 +154,9 @@ class CreditNoteService:
         if invoice.credit_allocations.exists():
             raise ValidationError("Cannot generate a new credit note because you have active Credit Note Allocations applied to this invoice. Please reduce or remove the applied allocations instead to balance the invoice.")
             
+        if hasattr(invoice, 'issued_credit_note'):
+            raise ValidationError("A Credit Note has already been generated for this invoice. Only one Credit Note can be generated per invoice.")
+            
         amount = abs(invoice.balance_due)
         
         # Determine Source
@@ -173,8 +168,7 @@ class CreditNoteService:
             source=source,
             amount=amount,
             issued_by=user,
-            reason=f"Generated from overpayment on {invoice.invoice_number}",
-            status=CreditNoteStatus.ACTIVE
+            reason=f"Generated from overpayment on {invoice.invoice_number}"
         )
         
         # Generate number if not generated yet (assuming signals handle this or we can generate it)
@@ -191,3 +185,24 @@ class CreditNoteService:
         )
             
         return cn
+
+    @classmethod
+    @transaction.atomic
+    def delete_credit_note(cls, credit_note_id: int, user=None):
+        credit_note = CreditNote.objects.select_for_update().get(id=credit_note_id)
+        if credit_note.allocated_amount > 0:
+            raise ValidationError("Cannot delete a Credit Note that has allocations. Please deallocate first.")
+            
+        amount = credit_note.amount
+        number = credit_note.number
+        invoice = credit_note.invoice
+        credit_note.delete()
+        
+        if invoice:
+            from apps.bookings.services import log_booking_history
+            log_booking_history(
+                booking=invoice.booking,
+                action="CREDIT_NOTE_DELETED",
+                description=f"Unallocated Credit Note {number} of {amount} was deleted.",
+                user=user
+            )

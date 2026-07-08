@@ -172,6 +172,17 @@ class BookingAdmin(ModelAdmin):
 
 
 
+    fieldsets = (
+        ('Actions & Financials', {
+            'fields': ('invoice_link', 'generate_invoice_button', 'view_history_button'),
+            'classes': ('tab',)
+        }),
+        ('Booking Details', {
+            'fields': ('booking_number', 'title', 'customer', 'status', 'passenger_list', 'priority', 'booking_source', 'assigned_to', 'notes', 'locked_at'),
+            'classes': ('tab',)
+        })
+    )
+
     def get_readonly_fields(self, request, obj=None):
         if obj is None:
             return []
@@ -525,14 +536,15 @@ class BookingTimelineAdmin(ModelAdmin):
                 })
                 
             # 6. Credit Notes Generated
-            for cn in inv.issued_credit_notes.all():
+            if hasattr(inv, 'issued_credit_note') and inv.issued_credit_note:
+                cn = inv.issued_credit_note
                 events.append({
                     'time': cn.created_at,
                     'category': 'CREDIT_GENERATED',
                     'color': '#8b5cf6', # Purple
                     'icon': '✨',
                     'title': f'Credit Note Issued: {cn.number}',
-                    'desc': f'Status: {cn.get_status_display()}',
+                    'desc': f'Status: {cn.status}',
                     'amount': f'+ {inv.currency} {cn.amount}',
                     'link': reverse('admin:credit_notes_creditnote_change', args=[cn.id])
                 })
@@ -552,6 +564,59 @@ class BookingTimelineAdmin(ModelAdmin):
                             'amount': f'- {inv.currency} {c.total_refund}',
                             'link': reverse('admin:cancellations_bookingcancellation_change', args=[c.id])
                         })
+                        
+        # Collect signatures of live objects to prevent duplicating "Added" audit logs
+        live_signatures = []
+        if hasattr(obj, 'invoice'):
+            inv = obj.invoice
+            live_signatures.append(f"Invoice {inv.invoice_number} generated")
+            for p in inv.payments.all():
+                live_signatures.append(f"Payment of {p.amount} via {p.get_method_display()} was added")
+            for a in inv.credit_allocations.all():
+                live_signatures.append(f"Credit of {a.amount} from {a.credit_note.number} was allocated")
+            if hasattr(inv, 'issued_credit_note') and inv.issued_credit_note:
+                cn = inv.issued_credit_note
+                live_signatures.append(f"Credit Note {cn.number} of {cn.amount} generated")
+            for line in inv.lines.all():
+                for traveler in line.travelers.all():
+                    if hasattr(traveler, 'cancellation'):
+                        live_signatures.append(f"Passenger {traveler.traveler_name} cancelled")
+
+        # 8. Audit Log Events (Deletions, Updates, Status Changes, and Historical Adds)
+        for history in obj.history.all():
+            # Skip ADDED/GENERATED audit logs if the live object is already rendering in the timeline
+            is_duplicate = False
+            if 'ADDED' in history.action or 'GENERATED' in history.action:
+                for sig in live_signatures:
+                    if sig in history.description:
+                        is_duplicate = True
+                        break
+            if is_duplicate:
+                continue
+                
+            # Determine icon based on action
+            icon = '📝'
+            if 'DELETED' in history.action or 'CANCELLED' in history.action:
+                icon = '🗑️'
+            elif 'UPDATED' in history.action:
+                icon = '✏️'
+            elif 'CLOSED' in history.action:
+                icon = '🔒'
+            elif 'OPENED' in history.action:
+                icon = '🔓'
+            elif 'ADDED' in history.action or 'GENERATED' in history.action:
+                icon = '⚡'
+                
+            events.append({
+                'time': history.created_at,
+                'category': 'AUDIT',
+                'color': '#475569', # Slate
+                'icon': icon,
+                'title': f'Audit: {history.action.replace("_", " ").title()}',
+                'desc': f'{history.description} (by {history.user.username if history.user else "System"})',
+                'amount': None,
+                'link': None
+            })
 
         # Sort by time (oldest first)
         events.sort(key=lambda x: x['time'])

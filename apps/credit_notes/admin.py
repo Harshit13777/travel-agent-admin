@@ -29,7 +29,7 @@ class CreditAllocationInline(TabularInline):
 class CreditNoteAdmin(ModelAdmin):
     list_display = ['number', 'customer', 'invoice', 'amount', 'allocated_amount', 'remaining_amount', 'status']
     search_fields = ['number', 'customer__name', 'customer__email', 'customer__phone', 'invoice__invoice_number']
-    list_filter = ['status', 'source', 'issued_at']
+    list_filter = ['source', 'issued_at']
     autocomplete_fields = ['customer', 'invoice']
     list_select_related = ['customer', 'invoice']
     inlines = [CreditAllocationInline]
@@ -80,6 +80,15 @@ class CreditNoteAdmin(ModelAdmin):
         if obj and obj.allocated_amount == 0:
             return True
         return False
+
+    def delete_model(self, request, obj):
+        from apps.credit_notes.services import CreditNoteService
+        CreditNoteService.delete_credit_note(obj.id, user=request.user)
+
+    def delete_queryset(self, request, queryset):
+        from apps.credit_notes.services import CreditNoteService
+        for obj in queryset:
+            CreditNoteService.delete_credit_note(obj.id, user=request.user)
 
 from django import forms
 

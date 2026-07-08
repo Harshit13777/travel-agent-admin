@@ -8,7 +8,7 @@ from apps.credit_notes.choices import CreditNoteStatus, CreditNoteSource
 
 class CreditNote(AuditModel):
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name='credit_notes', null=True, blank=True)
-    invoice = models.ForeignKey(Invoice, on_delete=models.SET_NULL, null=True, blank=True, related_name='issued_credit_notes', help_text="The invoice this credit was generated from, if any.")
+    invoice = models.OneToOneField(Invoice, on_delete=models.SET_NULL, null=True, blank=True, related_name='issued_credit_note', help_text="The invoice this credit was generated from, if any.")
     
     number = models.CharField(max_length=50, unique=True, db_index=True, null=True, blank=True)
     source = models.CharField(max_length=50, choices=CreditNoteSource.choices, default=CreditNoteSource.CANCELLATION)
@@ -18,7 +18,6 @@ class CreditNote(AuditModel):
     
     reason = models.TextField(blank=True)
     remarks = models.TextField(blank=True)
-    status = models.CharField(max_length=50, choices=CreditNoteStatus.choices, default=CreditNoteStatus.ACTIVE, db_index=True)
     
     from django.utils import timezone
     issued_at = models.DateTimeField(default=timezone.now)
@@ -49,6 +48,17 @@ class CreditNote(AuditModel):
     @property
     def remaining_amount(self):
         return self.amount - self.allocated_amount
+
+    @property
+    def status(self):
+        from apps.credit_notes.choices import CreditNoteStatus
+        if self.voided_at:
+            return CreditNoteStatus.VOID
+        if self.allocated_amount == Decimal("0.00"):
+            return CreditNoteStatus.ACTIVE
+        if self.allocated_amount >= self.amount:
+            return CreditNoteStatus.FULLY_APPLIED
+        return CreditNoteStatus.PARTIALLY_APPLIED
 
 class CreditAllocation(AuditModel):
     """
