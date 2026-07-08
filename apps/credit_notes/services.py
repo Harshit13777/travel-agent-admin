@@ -27,7 +27,7 @@ class CreditNoteService:
             
     @classmethod
     @transaction.atomic
-    def allocate_credit(cls, credit_note_id: int, invoice_id: int, amount: Decimal) -> CreditAllocation:
+    def allocate_credit(cls, credit_note_id: int, invoice_id: int, amount: Decimal, user=None) -> CreditAllocation:
         """
         Allocates credit from a CreditNote to an Invoice.
         """
@@ -57,11 +57,19 @@ class CreditNoteService:
         from apps.invoices.services import update_invoice_status
         update_invoice_status(invoice)
         
+        from apps.bookings.services import log_booking_history
+        log_booking_history(
+            booking=invoice.booking,
+            action="CREDIT_ALLOCATION_ADDED",
+            description=f"Credit of {allocation.amount} from {credit_note.number} was allocated to invoice {invoice.invoice_number}.",
+            user=user
+        )
+        
         return allocation
 
     @classmethod
     @transaction.atomic
-    def deallocate_credit(cls, allocation_id: int):
+    def deallocate_credit(cls, allocation_id: int, user=None):
         """
         Removes an allocation and refunds the amount back to the CreditNote.
         Fails if the linked Invoice is CLOSED.
@@ -87,6 +95,14 @@ class CreditNoteService:
         # Trigger invoice update
         from apps.invoices.services import update_invoice_status
         update_invoice_status(invoice)
+        
+        from apps.bookings.services import log_booking_history
+        log_booking_history(
+            booking=invoice.booking,
+            action="CREDIT_ALLOCATION_DELETED",
+            description=f"Credit allocation of {amount} from {credit_note.number} was removed.",
+            user=user
+        )
 
     @classmethod
     @transaction.atomic
@@ -165,5 +181,13 @@ class CreditNoteService:
         if not cn.number:
             cn.number = f"CN-{cn.id:04d}"
             cn.save(update_fields=['number'])
+            
+        from apps.bookings.services import log_booking_history
+        log_booking_history(
+            booking=invoice.booking,
+            action="CREDIT_NOTE_GENERATED",
+            description=f"Credit Note {cn.number} of {cn.amount} generated for {source}.",
+            user=user
+        )
             
         return cn

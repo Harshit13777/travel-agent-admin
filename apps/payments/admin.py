@@ -44,6 +44,14 @@ class PaymentAdmin(ModelAdmin):
         if obj:
             return ['invoice'] # Invoice shouldn't be changed after creation
         return []
+        
+    def save_model(self, request, obj, form, change):
+        from apps.payments.services import PaymentService
+        PaymentService.save_payment(obj, request.user, change)
+
+    def delete_model(self, request, obj):
+        from apps.payments.services import PaymentService
+        PaymentService.delete_payment(obj, request.user)
 
     def response_add(self, request, obj, post_url_continue=None):
         next_url = request.GET.get('next')

@@ -176,3 +176,9 @@ class BookingHistory(AuditModel):
 
     def __str__(self):
         return f"{self.booking.booking_number} - {self.action}"
+
+class BookingTimeline(Booking):
+    class Meta:
+        proxy = True
+        verbose_name = "Booking Timeline"
+        verbose_name_plural = "Booking Timelines"

@@ -79,6 +79,7 @@ class CancellationService:
         
         # 3. Create immutable ACTIVE cancellation ledger rows
         cancellations = []
+        from apps.bookings.services import log_booking_history
         for traveler in travelers:
             data = refund_data.get(traveler.id, {})
             cancellation = BookingCancellation(
@@ -95,6 +96,13 @@ class CancellationService:
             )
             cancellation.save() # Triggers DB checks and Unique constraints
             cancellations.append(cancellation)
+            
+            log_booking_history(
+                booking=invoice.booking,
+                action="CANCELLATION_ADDED",
+                description=f"Passenger {traveler.traveler_name} cancelled. Refund: {cancellation.total_refund}.",
+                user=user
+            )
             
 
         # Optional: You can call InvoiceCalculationService and CreditNoteService here if they exist in your project
@@ -130,5 +138,13 @@ class CancellationService:
         cancellation.remarks = remarks or cancellation.remarks
         cancellation.source = source
         cancellation.save()
+        
+        from apps.bookings.services import log_booking_history
+        log_booking_history(
+            booking=cancellation.invoice_line_traveler.invoice_line.invoice.booking,
+            action="CANCELLATION_UPDATED",
+            description=f"Cancellation for {cancellation.invoice_line_traveler.traveler_name} updated. New Refund: {cancellation.total_refund}.",
+            user=user
+        )
         
         return cancellation

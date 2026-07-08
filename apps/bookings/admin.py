@@ -176,7 +176,7 @@ class BookingAdmin(ModelAdmin):
         if obj is None:
             return []
             
-        readonly = ['booking_number', 'locked_at', 'invoice_link', 'passenger_list', 'generate_invoice_button']
+        readonly = ['booking_number', 'locked_at', 'invoice_link', 'passenger_list', 'generate_invoice_button', 'view_history_button']
         if obj.is_locked:
             readonly.append('customer')
             
@@ -200,15 +200,28 @@ class BookingAdmin(ModelAdmin):
         from django.utils.html import format_html
         from django.urls import reverse
         if hasattr(obj, 'invoice'):
-            url = reverse('admin:invoices_invoice_change', args=[obj.invoice.id])
+            inv = obj.invoice
+            url = reverse('admin:invoices_invoice_change', args=[inv.id])
             return format_html(
                 '<a href="{}" style="color: #3b82f6; font-weight: bold;">View Invoice {}</a><br><span style="color: #6b7280; font-size: 0.9em;">(Balance Due: {})</span>', 
                 url, 
-                obj.invoice.invoice_number,
-                obj.invoice.balance_due
+                inv.invoice_number,
+                inv.balance_due
             )
         return "No Invoice Generated"
     invoice_link.short_description = "Related Invoice"
+    
+    def view_history_button(self, obj):
+        if not obj or not obj.pk:
+            return ""
+        from django.utils.html import format_html
+        from django.urls import reverse
+        url = reverse('admin:bookings_bookingtimeline_change', args=[obj.id])
+        return format_html(
+            '<a href="{}" style="display: inline-block; background-color: #3b82f6; color: white; padding: 10px 16px; border-radius: 6px; text-decoration: none; font-family: sans-serif; font-size: 14px; font-weight: bold;">🕰️ View Full History</a>', 
+            url
+        )
+    view_history_button.short_description = "Audit Trail"
     
     def generate_invoice_button(self, obj):
         if not obj or not obj.pk:
@@ -410,3 +423,178 @@ class BookingTravelerAdmin(ModelAdmin):
     autocomplete_fields = ['traveler', 'booking_service']
     actions = [action_cancel_passenger]
 
+
+from apps.bookings.models import BookingTimeline
+
+@admin.register(BookingTimeline)
+class BookingTimelineAdmin(ModelAdmin):
+    readonly_fields = ['full_timeline']
+    fieldsets = (
+        (None, {
+            'fields': ('full_timeline',),
+            'classes': ('wide',)
+        }),
+    )
+
+    def has_add_permission(self, request): return False
+    def has_change_permission(self, request, obj=None): return False
+    def has_delete_permission(self, request, obj=None): return False
+
+    def full_timeline(self, obj):
+        from django.utils.safestring import mark_safe
+        from django.urls import reverse
+        
+        events = []
+        
+        # 1. Booking Created
+        events.append({
+            'time': obj.created_at,
+            'category': 'INITIAL',
+            'color': '#6b7280', # Gray
+            'icon': '📝',
+            'title': 'Booking Created',
+            'desc': f'Booking {obj.booking_number} initiated for {obj.customer.name}',
+            'amount': None,
+            'link': reverse('admin:bookings_booking_change', args=[obj.id])
+        })
+        
+        # 2. Services Added
+        for service in obj.services.all():
+            events.append({
+                'time': service.created_at,
+                'category': 'SERVICE',
+                'color': '#3b82f6', # Blue
+                'icon': '✈️',
+                'title': f'Service Added: {service.service_type.name}',
+                'desc': f'Provider: {service.service_provider}',
+                'amount': f'+ {service.currency} {service.total_service_charge}',
+                'link': reverse('admin:bookings_booking_change', args=[obj.id])
+            })
+            
+            # Passengers added (assuming roughly same time as service)
+            for traveler in service.booking_travelers.all():
+                events.append({
+                    'time': traveler.created_at,
+                    'category': 'PASSENGER',
+                    'color': '#0ea5e9', # Light Blue
+                    'icon': '👤',
+                    'title': f'Passenger Added: {traveler.traveler.full_name}',
+                    'desc': f'Status: {traveler.passenger_status}',
+                    'amount': None,
+                    'link': None
+                })
+        
+        # 3. Invoice Generated
+        if hasattr(obj, 'invoice'):
+            inv = obj.invoice
+            events.append({
+                'time': inv.created_at,
+                'category': 'INVOICE',
+                'color': '#f59e0b', # Orange
+                'icon': '🧾',
+                'title': f'Invoice Generated: {inv.invoice_number}',
+                'desc': f'Status: {inv.get_status_display()}',
+                'amount': f'{inv.currency} {inv.final_payable}',
+                'link': reverse('admin:invoices_invoice_change', args=[inv.id])
+            })
+            
+            # 4. Payments
+            for p in inv.payments.all():
+                events.append({
+                    'time': p.created_at,
+                    'category': 'PAYMENT',
+                    'color': '#10b981', # Green
+                    'icon': '💸',
+                    'title': f'Payment Received ({p.get_method_display()})',
+                    'desc': f'Ref: {p.reference_number}',
+                    'amount': f'- {inv.currency} {p.amount}',
+                    'link': reverse('admin:payments_payment_change', args=[p.id])
+                })
+                
+            # 5. Credit Note Allocations
+            for a in inv.credit_allocations.all():
+                events.append({
+                    'time': a.created_at,
+                    'category': 'CREDIT',
+                    'color': '#8b5cf6', # Purple
+                    'icon': '💰',
+                    'title': f'Credit Note Applied: {a.credit_note.number}',
+                    'desc': f'Source: {a.credit_note.get_source_display()}',
+                    'amount': f'- {inv.currency} {a.amount}',
+                    'link': reverse('admin:credit_notes_creditallocation_change', args=[a.id]) if hasattr(a, 'id') else None
+                })
+                
+            # 6. Credit Notes Generated
+            for cn in inv.issued_credit_notes.all():
+                events.append({
+                    'time': cn.created_at,
+                    'category': 'CREDIT_GENERATED',
+                    'color': '#8b5cf6', # Purple
+                    'icon': '✨',
+                    'title': f'Credit Note Issued: {cn.number}',
+                    'desc': f'Status: {cn.get_status_display()}',
+                    'amount': f'+ {inv.currency} {cn.amount}',
+                    'link': reverse('admin:credit_notes_creditnote_change', args=[cn.id])
+                })
+                
+            # 7. Cancellations
+            for line in inv.lines.all():
+                for traveler in line.travelers.all():
+                    if hasattr(traveler, 'cancellation'):
+                        c = traveler.cancellation
+                        events.append({
+                            'time': c.created_at,
+                            'category': 'CANCELLATION',
+                            'color': '#ef4444', # Red
+                            'icon': '❌',
+                            'title': f'Cancellation: {traveler.traveler_name}',
+                            'desc': f'Refund: {c.total_refund}',
+                            'amount': f'- {inv.currency} {c.total_refund}',
+                            'link': reverse('admin:cancellations_bookingcancellation_change', args=[c.id])
+                        })
+
+        # Sort by time (oldest first)
+        events.sort(key=lambda x: x['time'])
+        
+        # Build HTML
+        html = '<div style="font-family: sans-serif; max-width: 800px; margin: 0 auto; background: #f9fafb; padding: 20px; border-radius: 8px;">'
+        html += f'<h2 style="margin-top: 0; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">Timeline for Booking {obj.booking_number}</h2>'
+        
+        # Add a visual line container
+        html += '<div style="position: relative; padding-top: 20px;">'
+        
+        for e in events:
+            time_str = e['time'].strftime('%b %d, %Y - %I:%M %p')
+            
+            html += f'<div style="display: flex; margin-bottom: 20px; align-items: flex-start; position: relative;">'
+            
+            # Left: Icon & Line
+            html += f'<div style="display: flex; flex-direction: column; align-items: center; margin-right: 15px;">'
+            html += f'<div style="width: 36px; height: 36px; border-radius: 50%; background-color: {e["color"]}; display: flex; align-items: center; justify-content: center; color: white; font-size: 16px; z-index: 2; box-shadow: 0 0 0 4px #f9fafb;">{e["icon"]}</div>'
+            html += f'<div style="width: 2px; height: calc(100% + 20px); background-color: #e5e7eb; position: absolute; top: 36px; left: 17px; z-index: 1;"></div>'
+            html += f'</div>'
+            
+            # Right: Content
+            html += f'<div style="flex-grow: 1; background: white; padding: 12px 16px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-left: 4px solid {e["color"]}; z-index: 2;">'
+            
+            # Header
+            html += f'<div style="display: flex; justify-content: space-between; margin-bottom: 4px;">'
+            title_html = f'<a href="{e["link"]}" style="color: #111827; font-weight: bold; text-decoration: none;">{e["title"]}</a>' if e["link"] else f'<span style="color: #111827; font-weight: bold;">{e["title"]}</span>'
+            html += f'<div>{title_html}</div>'
+            html += f'<div style="font-size: 12px; color: #6b7280;">{time_str}</div>'
+            html += f'</div>'
+            
+            # Description & Amount
+            html += f'<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">'
+            html += f'<div style="font-size: 13px; color: #4b5563;">{e["desc"]}</div>'
+            if e["amount"]:
+                amt_color = '#ef4444' if e["amount"].startswith('-') and 'CANCELLATION' in e["category"] else ('#10b981' if e["amount"].startswith('-') else '#111827')
+                html += f'<div style="font-size: 14px; font-weight: bold; color: {amt_color};">{e["amount"]}</div>'
+            html += f'</div>'
+            
+            html += f'</div></div>'
+            
+        html += '</div></div>'
+        return mark_safe(html)
+        
+    full_timeline.short_description = "Complete Booking History"

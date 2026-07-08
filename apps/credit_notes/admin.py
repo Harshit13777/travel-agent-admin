@@ -125,19 +125,20 @@ class CreditAllocationAdmin(ModelAdmin):
         allocation = CreditNoteService.allocate_credit(
             credit_note_id=obj.credit_note.id,
             invoice_id=obj.invoice.id,
-            amount=obj.amount
+            amount=obj.amount,
+            user=request.user
         )
         obj.pk = allocation.pk
         obj.id = allocation.id
 
     def delete_model(self, request, obj):
         from apps.credit_notes.services import CreditNoteService
-        CreditNoteService.deallocate_credit(obj.id)
+        CreditNoteService.deallocate_credit(obj.id, user=request.user)
 
     def delete_queryset(self, request, queryset):
         from apps.credit_notes.services import CreditNoteService
         for obj in queryset:
-            CreditNoteService.deallocate_credit(obj.id)
+            CreditNoteService.deallocate_credit(obj.id, user=request.user)
             
     def response_add(self, request, obj, post_url_continue=None):
         next_url = request.GET.get('next')

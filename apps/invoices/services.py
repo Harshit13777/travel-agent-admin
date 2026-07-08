@@ -244,3 +244,28 @@ def update_invoice_status(invoice: Invoice) -> Invoice:
             invoice.status = new_status
             invoice.save(update_fields=['status'])
         return invoice
+
+def close_invoice(invoice: Invoice, user=None) -> Invoice:
+    if invoice.status != InvoiceStatus.CLOSED:
+        invoice.status = InvoiceStatus.CLOSED
+        invoice.save(update_fields=['status'])
+        log_booking_history(
+            booking=invoice.booking,
+            action="INVOICE_CLOSED",
+            description=f"Invoice {invoice.invoice_number} was marked as CLOSED. Financials locked.",
+            user=user
+        )
+    return invoice
+
+def reopen_invoice(invoice: Invoice, user=None) -> Invoice:
+    if invoice.status == InvoiceStatus.CLOSED:
+        invoice.status = InvoiceStatus.ISSUED
+        invoice.save(update_fields=['status'])
+        log_booking_history(
+            booking=invoice.booking,
+            action="INVOICE_OPENED",
+            description=f"Invoice {invoice.invoice_number} was RE-OPENED. Financials unlocked.",
+            user=user
+        )
+        update_invoice_status(invoice)
+    return invoice
