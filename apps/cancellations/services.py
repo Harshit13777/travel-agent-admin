@@ -148,3 +148,24 @@ class CancellationService:
         )
         
         return cancellation
+
+    @classmethod
+    @transaction.atomic
+    def delete_cancellation(cls, cancellation, user=None):
+        from apps.invoices.choices import InvoiceStatus
+        if cancellation.invoice_line_traveler.invoice_line.invoice.status == InvoiceStatus.CLOSED:
+            raise ValidationError("Cannot delete cancellations for a CLOSED invoice.")
+            
+        booking = cancellation.invoice_line_traveler.invoice_line.invoice.booking
+        passenger_name = cancellation.invoice_line_traveler.traveler_name
+        refund = cancellation.total_refund
+        
+        cancellation.delete()
+        
+        from apps.bookings.services import log_booking_history
+        log_booking_history(
+            booking=booking,
+            action="CANCELLATION_DELETED",
+            description=f"Cancellation for {passenger_name} deleted. Refund of {refund} reverted.",
+            user=user
+        )

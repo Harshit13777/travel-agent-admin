@@ -11,3 +11,7 @@ class CompanySettingsAdmin(ModelAdmin):
         if self.model.objects.exists():
             return False
         return super().has_add_permission(request)
+
+    def save_model(self, request, obj, form, change):
+        from .services import save_company_settings
+        save_company_settings(obj, user=request.user, change=change)

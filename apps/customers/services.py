@@ -21,3 +21,26 @@ class CustomerService:
             
         if errors:
             raise ValidationError(errors)
+            
+    @staticmethod
+    def save_customer(customer, user=None, change=False):
+        CustomerService.validate_customer(
+            credit_limit=customer.credit_limit,
+            gst_number=customer.gst_number,
+            pan=customer.pan
+        )
+        customer.save()
+        return customer
+
+    @staticmethod
+    def delete_customer(customer, user=None):
+        customer.delete()
+
+    @staticmethod
+    def save_supplier(supplier, user=None, change=False):
+        supplier.save()
+        return supplier
+
+    @staticmethod
+    def delete_supplier(supplier, user=None):
+        supplier.delete()

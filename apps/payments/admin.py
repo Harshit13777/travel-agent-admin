@@ -53,6 +53,11 @@ class PaymentAdmin(ModelAdmin):
         from apps.payments.services import PaymentService
         PaymentService.delete_payment(obj, request.user)
 
+    def delete_queryset(self, request, queryset):
+        from apps.payments.services import PaymentService
+        for obj in queryset:
+            PaymentService.delete_payment(obj, request.user)
+
     def response_add(self, request, obj, post_url_continue=None):
         next_url = request.GET.get('next')
         if next_url and '_addanother' not in request.POST and '_continue' not in request.POST:

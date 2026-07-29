@@ -187,6 +187,15 @@ class BookingCancellationAdmin(ModelAdmin):
             # or the admin will redirect to the list view acting as if it saved.
             # Most validation should now happen in form.clean() to avoid this block entirely.
             raise e
+            
+    def delete_model(self, request, obj):
+        from apps.cancellations.services import CancellationService
+        CancellationService.delete_cancellation(obj, user=request.user)
+        
+    def delete_queryset(self, request, queryset):
+        from apps.cancellations.services import CancellationService
+        for obj in queryset:
+            CancellationService.delete_cancellation(obj, user=request.user)
     
     def get_readonly_fields(self, request, obj=None):
         base_readonly = []

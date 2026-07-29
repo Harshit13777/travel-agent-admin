@@ -24,3 +24,13 @@ class TravelerAdmin(ModelAdmin):
     list_display = ['full_name', 'customer', 'primary_identity_type', 'phone']
     search_fields = ['full_name', 'phone', 'primary_identity_number', 'passport_number']
     list_filter = ['primary_identity_type']
+    
+    def save_model(self, request, obj, form, change):
+        TravelerService.save_traveler(obj, user=request.user, change=change)
+        
+    def delete_model(self, request, obj):
+        TravelerService.delete_traveler(obj, user=request.user)
+        
+    def delete_queryset(self, request, queryset):
+        for obj in queryset:
+            TravelerService.delete_traveler(obj, user=request.user)

@@ -17,3 +17,17 @@ class TravelerService:
             
         if errors:
             raise ValidationError(errors)
+            
+    @staticmethod
+    def save_traveler(traveler, user=None, change=False):
+        TravelerService.validate_traveler(
+            dob=traveler.dob,
+            passport_issue_date=traveler.passport_issue_date,
+            passport_expiry=traveler.passport_expiry
+        )
+        traveler.save()
+        return traveler
+
+    @staticmethod
+    def delete_traveler(traveler, user=None):
+        traveler.delete()
