@@ -348,6 +348,19 @@ def update_booking_traveler(booking_traveler, user=None):
                 raise ValidationError("Cannot modify financial fields or traveler reference after the booking is invoiced.")
         
     booking_traveler.save()
+    
+    # Audit log
+    action = BookingHistoryAction.PASSENGER_UPDATED
+    log_booking_history(
+        booking=booking,
+        action=action,
+        description=f"Passenger {booking_traveler.traveler.full_name} details updated.",
+        metadata={
+            "booking_service_id": booking_traveler.booking_service.id,
+            "traveler_id": booking_traveler.traveler.id
+        },
+        user=user
+    )
 
 
 def update_booking(booking, user=None):
@@ -356,6 +369,14 @@ def update_booking(booking, user=None):
         from django.core.exceptions import ValidationError
         raise ValidationError({'journey_end': 'Journey end cannot be before journey start.'})
     booking.save()
+    
+    log_booking_history(
+        booking=booking,
+        action=BookingHistoryAction.BOOKING_UPDATED,
+        description=f"Booking {booking.booking_number} details updated.",
+        metadata={"booking_id": booking.id},
+        user=user
+    )
 
 def update_booking_service(booking_service, user=None):
     if booking_service.pk:
@@ -369,21 +390,52 @@ def update_booking_service(booking_service, user=None):
         from django.core.exceptions import ValidationError
         raise ValidationError({'journey_end': 'Journey end cannot be before journey start.'})
     booking_service.save()
+    
+    log_booking_history(
+        booking=booking_service.booking,
+        action=BookingHistoryAction.SERVICE_UPDATED,
+        description=f"Service {booking_service.service_type.name} details updated.",
+        metadata={"booking_service_id": booking_service.id},
+        user=user
+    )
+
+def create_booking_service(booking_service: BookingService, user=None) -> BookingService:
+    booking_service.save()
+    log_booking_history(
+        booking=booking_service.booking,
+        action=BookingHistoryAction.SERVICE_CREATED,
+        description=f"Service {booking_service.service_type.name} added to booking.",
+        metadata={"booking_service_id": booking_service.id},
+        user=user
+    )
+    return booking_service
+
+def create_booking_traveler(booking_traveler: BookingTraveler, user=None) -> BookingTraveler:
+    booking_traveler.save()
+    log_booking_history(
+        booking=booking_traveler.booking_service.booking,
+        action=BookingHistoryAction.PASSENGER_ADDED,
+        description=f"Passenger {booking_traveler.traveler.full_name} added to service.",
+        metadata={
+            "booking_service_id": booking_traveler.booking_service.id,
+            "traveler_id": booking_traveler.traveler.id
+        },
+        user=user
+    )
+    return booking_traveler
 
 def delete_booking(booking, user=None):
     from django.core.exceptions import ValidationError
     if booking.is_locked:
         raise ValidationError("Cannot delete a booking after an invoice has been generated.")
+        
+    booking_number = booking.booking_number
+    # Log before delete since it might cascade
+    log_booking_history(
+        booking=booking,
+        action=BookingHistoryAction.BOOKING_DELETED,
+        description=f"Booking {booking_number} deleted.",
+        metadata={"booking_id": booking.id},
+        user=user
+    )
     booking.delete()
-
-def delete_booking_service(booking_service, user=None):
-    from django.core.exceptions import ValidationError
-    if booking_service.booking.is_locked:
-        raise ValidationError("Cannot delete a service after an invoice has been generated.")
-    booking_service.delete()
-
-def delete_booking_traveler(booking_traveler, user=None):
-    from django.core.exceptions import ValidationError
-    if booking_traveler.booking_service.booking.is_locked:
-        raise ValidationError("Cannot delete a passenger after an invoice has been generated.")
-    booking_traveler.delete()

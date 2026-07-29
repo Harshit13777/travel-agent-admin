@@ -184,10 +184,11 @@ class BookingAdmin(ModelAdmin):
     )
 
     def get_readonly_fields(self, request, obj=None):
+        readonly = ['invoice_link', 'passenger_list', 'generate_invoice_button', 'view_history_button']
         if obj is None:
-            return []
+            return readonly
             
-        readonly = ['booking_number', 'locked_at', 'invoice_link', 'passenger_list', 'generate_invoice_button', 'view_history_button']
+        readonly.extend(['booking_number', 'locked_at'])
         if obj.is_locked:
             readonly.append('customer')
             
@@ -208,6 +209,8 @@ class BookingAdmin(ModelAdmin):
             delete_booking(obj, user=request.user)
 
     def invoice_link(self, obj):
+        if not obj or not obj.pk:
+            return "Save booking first"
         from django.utils.html import format_html
         from django.urls import reverse
         if hasattr(obj, 'invoice'):
@@ -279,6 +282,8 @@ class BookingAdmin(ModelAdmin):
             return redirect('admin:bookings_booking_change', object_id)
 
     def passenger_list(self, obj):
+        if not obj or not obj.pk:
+            return "No Passengers"
         from apps.bookings.models import BookingTraveler
         travelers = BookingTraveler.objects.filter(booking_service__booking=obj).values_list('traveler__full_name', flat=True).distinct()
         names = [str(t).strip() for t in travelers if t]

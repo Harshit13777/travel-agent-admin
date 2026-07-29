@@ -16,11 +16,19 @@ class PaymentService:
         payment.save()
         
         from apps.bookings.services import log_booking_history
-        action = "PAYMENT_UPDATED" if change else "PAYMENT_ADDED"
+        from apps.bookings.choices import BookingHistoryAction
+        
+        action = BookingHistoryAction.PAYMENT_UPDATED if change else BookingHistoryAction.PAYMENT_ADDED
         log_booking_history(
             booking=payment.invoice.booking,
             action=action,
             description=f"Payment of {payment.amount} via {payment.get_method_display()} was {'updated' if change else 'added'}.",
+            metadata={
+                "payment_id": payment.id,
+                "amount": str(payment.amount),
+                "method": payment.get_method_display(),
+                "invoice_id": payment.invoice.id
+            },
             user=user
         )
         return payment
@@ -34,9 +42,12 @@ class PaymentService:
         payment.delete()
         
         from apps.bookings.services import log_booking_history
+        from apps.bookings.choices import BookingHistoryAction
+        
         log_booking_history(
             booking=booking,
-            action="PAYMENT_DELETED",
+            action=BookingHistoryAction.PAYMENT_DELETED,
             description=f"Payment of {amount} via {method} was deleted.",
+            metadata={"amount": str(amount), "method": method},
             user=user
         )

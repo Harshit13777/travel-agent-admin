@@ -249,10 +249,12 @@ def close_invoice(invoice: Invoice, user=None) -> Invoice:
     if invoice.status != InvoiceStatus.CLOSED:
         invoice.status = InvoiceStatus.CLOSED
         invoice.save(update_fields=['status'])
+        from apps.bookings.choices import BookingHistoryAction
         log_booking_history(
             booking=invoice.booking,
-            action="INVOICE_CLOSED",
+            action=BookingHistoryAction.INVOICE_CLOSED,
             description=f"Invoice {invoice.invoice_number} was marked as CLOSED. Financials locked.",
+            metadata={"invoice_id": invoice.id},
             user=user
         )
     return invoice
@@ -261,10 +263,12 @@ def reopen_invoice(invoice: Invoice, user=None) -> Invoice:
     if invoice.status == InvoiceStatus.CLOSED:
         invoice.status = InvoiceStatus.ISSUED
         invoice.save(update_fields=['status'])
+        from apps.bookings.choices import BookingHistoryAction
         log_booking_history(
             booking=invoice.booking,
-            action="INVOICE_OPENED",
+            action=BookingHistoryAction.INVOICE_OPENED,
             description=f"Invoice {invoice.invoice_number} was RE-OPENED. Financials unlocked.",
+            metadata={"invoice_id": invoice.id},
             user=user
         )
         update_invoice_status(invoice)
