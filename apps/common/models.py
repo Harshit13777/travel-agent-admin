@@ -12,12 +12,40 @@ class AuditModel(models.Model):
         abstract = True
         ordering = ["-created_at"]
 
+class SoftDeleteManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(is_deleted=False)
+
+class SoftDeleteModel(AuditModel):
+    is_deleted = models.BooleanField(default=False)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    
+    objects = SoftDeleteManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        abstract = True
+        ordering = ["-created_at"]
+
+    def soft_delete(self):
+        from django.utils import timezone
+        self.is_deleted = True
+        self.deleted_at = timezone.now()
+        self.save(update_fields=['is_deleted', 'deleted_at'])
+
+    def restore(self):
+        self.is_deleted = False
+        self.deleted_at = None
+        self.save(update_fields=['is_deleted', 'deleted_at'])
+
 class NumberSequence(models.Model):
     """
     Sequence table for transaction-safe number generation.
     """
     prefix = models.CharField(max_length=10, unique=True)
-    last_value = models.CharField(max_length=20)
+    last_value = models.CharField(max_length=20, blank=True)
+    current_year = models.IntegerField(default=0)
+    current_sequence = models.IntegerField(default=0)
 
     class Meta:
         verbose_name = "Number Sequence"

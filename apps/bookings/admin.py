@@ -170,6 +170,14 @@ class BookingAdmin(ModelAdmin):
     inlines = [BookingServiceInline]
     actions = [action_confirm_booking, action_generate_invoice]
 
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.prefetch_related(
+            'services',
+            'services__booking_travelers',
+            'services__booking_travelers__traveler'
+        )
+
 
 
     fieldsets = (
@@ -183,10 +191,20 @@ class BookingAdmin(ModelAdmin):
         })
     )
 
+    def get_fieldsets(self, request, obj=None):
+        if obj is None:
+            return (
+                ('Booking Details', {
+                    'fields': ('title', 'customer', 'status', 'priority', 'booking_source', 'assigned_to', 'notes'),
+                    'classes': ('tab',)
+                }),
+            )
+        return super().get_fieldsets(request, obj)
+
     def get_readonly_fields(self, request, obj=None):
         readonly = ['invoice_link', 'passenger_list', 'generate_invoice_button', 'view_history_button']
         if obj is None:
-            return readonly
+            return []
             
         readonly.extend(['booking_number', 'locked_at'])
         if obj.is_locked:
@@ -284,9 +302,14 @@ class BookingAdmin(ModelAdmin):
     def passenger_list(self, obj):
         if not obj or not obj.pk:
             return "No Passengers"
-        from apps.bookings.models import BookingTraveler
-        travelers = BookingTraveler.objects.filter(booking_service__booking=obj).values_list('traveler__full_name', flat=True).distinct()
-        names = [str(t).strip() for t in travelers if t]
+            
+        names = []
+        for service in obj.services.all():
+            for bt in service.booking_travelers.all():
+                name = str(bt.traveler.full_name).strip()
+                if name and name not in names:
+                    names.append(name)
+                    
         if not names:
             return "No Passengers"
         if len(names) > 3:
@@ -334,6 +357,10 @@ class BookingServiceAdmin(ModelAdmin):
     inlines = [BookingTravelerInline]
     list_filter = ['service_type']
     exclude = ['display_order']
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.prefetch_related('booking_travelers')
 
     def get_readonly_fields(self, request, obj=None):
         readonly = ['total_supplier_cost', 'total_service_charge', 'currency']

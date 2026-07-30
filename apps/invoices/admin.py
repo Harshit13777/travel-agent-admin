@@ -38,6 +38,14 @@ class InvoiceAdmin(ModelAdmin):
     autocomplete_fields = ['booking']
     list_select_related = ['booking', 'booking__customer']
     inlines = [InvoiceLineInline]
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.prefetch_related(
+            'payments',
+            'credit_allocations',
+            'lines__travelers__cancellation'
+        )
     
     fieldsets = (
         ('Financial Ledger (Statement)', {

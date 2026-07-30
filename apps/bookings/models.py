@@ -2,7 +2,7 @@ from decimal import Decimal
 from django.db import models
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from apps.common.models import AuditModel
+from apps.common.models import AuditModel, SoftDeleteModel
 from apps.common.constants import ZERO_AMOUNT
 from apps.customers.models import Customer, Supplier
 from apps.travelers.models import Traveler
@@ -10,7 +10,7 @@ from apps.bookings.choices import (
     BookingStatus, PassengerStatus, BookingSource, Priority
 )
 
-class Booking(AuditModel):
+class Booking(SoftDeleteModel):
     booking_number = models.CharField(max_length=20, unique=True, db_index=True)
     title = models.CharField(max_length=200, blank=True)
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name='bookings')
@@ -85,7 +85,7 @@ class ServiceType(AuditModel):
         return self.name
 
 
-class BookingService(AuditModel):
+class BookingService(SoftDeleteModel):
     booking = models.ForeignKey(
         Booking, 
         on_delete=models.CASCADE, 
@@ -125,7 +125,7 @@ class BookingService(AuditModel):
         return self.total_service_charge - self.total_supplier_cost
 
 
-class BookingTraveler(AuditModel):
+class BookingTraveler(SoftDeleteModel):
     booking_service = models.ForeignKey(BookingService, on_delete=models.CASCADE, related_name='booking_travelers')
     traveler = models.ForeignKey(Traveler, on_delete=models.PROTECT, related_name='booking_travelers')
     passenger_status = models.CharField(max_length=50, choices=PassengerStatus.choices, default=PassengerStatus.CONFIRMED)

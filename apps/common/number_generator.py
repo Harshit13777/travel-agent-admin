@@ -10,22 +10,19 @@ def _generate_number(sequence_name: str, prefix: str) -> str:
     with transaction.atomic():
         seq, created = NumberSequence.objects.select_for_update().get_or_create(
             prefix=sequence_name,
-            defaults={'last_value': ''}
+            defaults={'last_value': '', 'current_year': timezone.now().year, 'current_sequence': 0}
         )
         
-        current_time_str = timezone.now().strftime('%Y%m%d%H%M%S')
+        current_year = timezone.now().year
         
-        if seq.last_value >= current_time_str:
-            # If generated in the same second, increment the second artificially
-            from datetime import datetime, timedelta
-            last_dt = datetime.strptime(seq.last_value, '%Y%m%d%H%M%S')
-            next_dt = last_dt + timedelta(seconds=1)
-            current_time_str = next_dt.strftime('%Y%m%d%H%M%S')
+        if seq.current_year != current_year:
+            seq.current_year = current_year
+            seq.current_sequence = 0
             
-        seq.last_value = current_time_str
-        seq.save(update_fields=['last_value'])
+        seq.current_sequence += 1
+        seq.save(update_fields=['current_year', 'current_sequence'])
         
-        return f"{prefix}-{current_time_str}"
+        return f"{prefix}-{current_year}-{seq.current_sequence:04d}"
 
 def generate_booking_number() -> str:
     return _generate_number("BOOKING", "BKG")

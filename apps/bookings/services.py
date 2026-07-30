@@ -4,17 +4,31 @@ from django.utils import timezone
 from apps.bookings.models import Booking, BookingService, BookingTraveler, BookingHistory, ServiceType
 from apps.credit_notes.models import CreditNote
 
+from django.forms.models import model_to_dict
 from apps.invoices.models import Invoice
 from apps.bookings.choices import BookingStatus, PassengerStatus, BookingHistoryAction
 from apps.common.number_generator import generate_booking_number, generate_invoice_number, generate_credit_note_number
 
-def log_booking_history(booking, action, user, description="", metadata=None):
+def log_booking_history(booking, action, user, description="", metadata=None, old_state=None, new_state=None):
     """
     Centralized helper to log booking history events.
     Ensures all history is routed through a single point.
     """
     if metadata is None:
         metadata = {}
+        
+    if old_state and new_state:
+        diff = {}
+        for key in new_state:
+            old_val = old_state.get(key)
+            new_val = new_state.get(key)
+            if old_val != new_val:
+                # Convert values to strings for JSON serialization if they are not basic types
+                diff[key] = {"old": str(old_val) if old_val is not None else None, 
+                             "new": str(new_val) if new_val is not None else None}
+        if diff:
+            metadata["state_changes"] = diff
+            
     return BookingHistory.objects.create(
         booking=booking,
         action=action,
@@ -61,7 +75,7 @@ def delete_booking_service(booking_service: BookingService, user=None) -> Bookin
     with transaction.atomic():
         service_name = booking_service.service_type.name
         service_id = booking_service.id
-        booking_service.delete()
+        booking_service.soft_delete()
         log_booking_history(
             booking=booking,
             action=BookingHistoryAction.SERVICE_DELETED,
@@ -85,7 +99,7 @@ def delete_booking_traveler(booking_traveler: BookingTraveler, user=None) -> Boo
     with transaction.atomic():
         traveler_name = booking_traveler.traveler.full_name
         traveler_id = booking_traveler.traveler.id
-        booking_traveler.delete()
+        booking_traveler.soft_delete()
         log_booking_history(
             booking=booking,
             action=BookingHistoryAction.PASSENGER_DELETED,
@@ -325,8 +339,10 @@ def update_booking_traveler(booking_traveler, user=None):
     Validates and updates a BookingTraveler.
     Business logic: Cannot modify financial fields once invoiced.
     """
+    old_state = None
     if booking_traveler.pk:
         original = BookingTraveler.objects.get(pk=booking_traveler.pk)
+        old_state = model_to_dict(original)
         
         # Check if they have an active cancellation
         from apps.cancellations.models import BookingCancellation
@@ -349,6 +365,7 @@ def update_booking_traveler(booking_traveler, user=None):
         
     booking_traveler.save()
     
+    new_state = model_to_dict(booking_traveler)
     # Audit log
     action = BookingHistoryAction.PASSENGER_UPDATED
     log_booking_history(
@@ -359,28 +376,39 @@ def update_booking_traveler(booking_traveler, user=None):
             "booking_service_id": booking_traveler.booking_service.id,
             "traveler_id": booking_traveler.traveler.id
         },
+        old_state=old_state,
+        new_state=new_state,
         user=user
     )
 
 
 def update_booking(booking, user=None):
+    old_state = None
+    if booking.pk:
+        old_state = model_to_dict(Booking.objects.get(pk=booking.pk))
+        
             
     if booking.journey_start and booking.journey_end and booking.journey_end < booking.journey_start:
         from django.core.exceptions import ValidationError
         raise ValidationError({'journey_end': 'Journey end cannot be before journey start.'})
     booking.save()
+    new_state = model_to_dict(booking)
     
     log_booking_history(
         booking=booking,
         action=BookingHistoryAction.BOOKING_UPDATED,
         description=f"Booking {booking.booking_number} details updated.",
         metadata={"booking_id": booking.id},
+        old_state=old_state,
+        new_state=new_state,
         user=user
     )
 
 def update_booking_service(booking_service, user=None):
+    old_state = None
     if booking_service.pk:
         original = BookingService.objects.get(pk=booking_service.pk)
+        old_state = model_to_dict(original)
         if original.booking.is_locked:
             if original.booking_id != booking_service.booking_id or original.service_type_id != booking_service.service_type_id or original.supplier_id != booking_service.supplier_id:
                 from django.core.exceptions import ValidationError
@@ -390,12 +418,15 @@ def update_booking_service(booking_service, user=None):
         from django.core.exceptions import ValidationError
         raise ValidationError({'journey_end': 'Journey end cannot be before journey start.'})
     booking_service.save()
+    new_state = model_to_dict(booking_service)
     
     log_booking_history(
         booking=booking_service.booking,
         action=BookingHistoryAction.SERVICE_UPDATED,
         description=f"Service {booking_service.service_type.name} details updated.",
         metadata={"booking_service_id": booking_service.id},
+        old_state=old_state,
+        new_state=new_state,
         user=user
     )
 
@@ -438,4 +469,4 @@ def delete_booking(booking, user=None):
         metadata={"booking_id": booking.id},
         user=user
     )
-    booking.delete()
+    booking.soft_delete()
