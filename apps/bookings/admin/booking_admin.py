@@ -100,7 +100,7 @@ class BookingAdmin(ModelAdmin):
             return "Save booking first"
         from django.utils.html import format_html
         from django.urls import reverse
-        if hasattr(obj, 'invoice'):
+        if obj.has_invoice:
             inv = obj.invoice
             url = reverse('admin:invoices_invoice_change', args=[inv.id])
             return format_html(
@@ -131,7 +131,7 @@ class BookingAdmin(ModelAdmin):
         from django.utils.html import format_html
         from django.urls import reverse
         
-        if hasattr(obj, 'invoice') or obj.is_locked:
+        if obj.has_invoice or obj.is_locked:
             return "✅ Invoice has been generated."
             
         url = reverse('admin:bookings_booking_generate_invoice_btn', args=[obj.id])
@@ -156,7 +156,7 @@ class BookingAdmin(ModelAdmin):
         from apps.invoices.services import generate_invoice
         
         booking = get_object_or_404(Booking, pk=object_id)
-        if booking.is_locked or hasattr(booking, 'invoice'):
+        if booking.is_locked or booking.has_invoice:
             messages.info(request, "Invoice is already generated.")
             return redirect('admin:bookings_booking_change', object_id)
             
@@ -310,14 +310,14 @@ class BookingTimelineAdmin(ModelAdmin):
                     'link': None
                 })
         
-        # 3. Invoice Generated
-        if hasattr(obj, 'invoice'):
-            inv = obj.invoice
+        # 3. Invoices Generated
+        from apps.invoices.choices import InvoiceStatus
+        for inv in obj.invoices.all():
             events.append({
                 'time': inv.created_at,
                 'category': 'INVOICE',
-                'color': '#f59e0b', # Orange
-                'icon': '🧾',
+                'color': '#f59e0b' if inv.status != InvoiceStatus.VOID else '#9ca3af', # Gray if voided
+                'icon': '🧾' if inv.status != InvoiceStatus.VOID else '🗑️',
                 'title': f'Invoice Generated: {inv.invoice_number}',
                 'desc': f'Status: {inv.get_status_display()}',
                 'amount': f'{inv.currency} {inv.final_payable}',
@@ -379,7 +379,6 @@ class BookingTimelineAdmin(ModelAdmin):
                             'amount': f'- {inv.currency} {c.total_refund}',
                             'link': reverse('admin:cancellations_bookingcancellation_change', args=[c.id])
                         })
-                        
         # Collect signatures of live objects to prevent duplicating "Added" audit logs
         live_signatures = [
             f"Booking created for {obj.customer.name}."
@@ -390,16 +389,14 @@ class BookingTimelineAdmin(ModelAdmin):
             for traveler in service.booking_travelers.all():
                 live_signatures.append(f"Passenger {traveler.traveler.full_name} added to service.")
                 
-        if hasattr(obj, 'invoice'):
-            inv = obj.invoice
+        for inv in obj.invoices.all():
             live_signatures.append(f"Invoice {inv.invoice_number} generated")
             for p in inv.payments.all():
                 live_signatures.append(f"Payment of {p.amount} via {p.get_method_display()} was added")
             for a in inv.credit_allocations.all():
                 live_signatures.append(f"Credit of {a.amount} from {a.credit_note.number} was allocated")
             if hasattr(inv, 'issued_credit_note') and inv.issued_credit_note:
-                cn = inv.issued_credit_note
-                live_signatures.append(f"Credit Note {cn.number} of {cn.amount} generated")
+                live_signatures.append(f"Credit note {inv.issued_credit_note.number} generated")
             for line in inv.lines.all():
                 for traveler in line.travelers.all():
                     if hasattr(traveler, 'cancellation'):
