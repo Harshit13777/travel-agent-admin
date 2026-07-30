@@ -67,8 +67,34 @@ class PaymentAdmin(ModelAdmin):
             PaymentService.delete_payment(obj, request.user)
 
     def response_add(self, request, obj, post_url_continue=None):
-        next_url = request.GET.get('next')
-        if next_url and '_addanother' not in request.POST and '_continue' not in request.POST:
-            from django.http import HttpResponseRedirect
-            return HttpResponseRedirect(next_url)
+        if '_addanother' not in request.POST and '_continue' not in request.POST:
+            if obj and obj.invoice_id:
+                from django.urls import reverse
+                from django.http import HttpResponseRedirect
+                return HttpResponseRedirect(reverse('admin:invoices_invoice_change', args=[obj.invoice_id]))
         return super().response_add(request, obj, post_url_continue)
+        
+    def response_change(self, request, obj):
+        if '_addanother' not in request.POST and '_continue' not in request.POST:
+            if obj and obj.invoice_id:
+                from django.urls import reverse
+                from django.http import HttpResponseRedirect
+                return HttpResponseRedirect(reverse('admin:invoices_invoice_change', args=[obj.invoice_id]))
+        return super().response_change(request, obj)
+        
+    def delete_view(self, request, object_id, extra_context=None):
+        try:
+            obj = self.get_object(request, object_id)
+            invoice_id = obj.invoice_id if obj else None
+        except Exception:
+            invoice_id = None
+            
+        response = super().delete_view(request, object_id, extra_context)
+        
+        if request.method == 'POST' and invoice_id:
+            from django.http import HttpResponseRedirect
+            if isinstance(response, HttpResponseRedirect):
+                from django.urls import reverse
+                return HttpResponseRedirect(reverse('admin:invoices_invoice_change', args=[invoice_id]))
+                
+        return response

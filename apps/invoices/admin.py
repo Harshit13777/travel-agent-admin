@@ -127,7 +127,8 @@ class InvoiceAdmin(ModelAdmin):
             html += '<div style="padding-left: 20px; margin-top: 4px;">'
             for p in payments:
                 from django.urls import reverse
-                payment_url = reverse('admin:payments_payment_change', args=[p.id])
+                next_url = reverse('admin:invoices_invoice_change', args=[obj.id])
+                payment_url = reverse('admin:payments_payment_change', args=[p.id]) + f'?next={next_url}'
                 html += f'<div style="display: flex; justify-content: space-between; margin-bottom: 2px;">'
                 html += f'<span><a href="{payment_url}" style="color: #10b981; text-decoration: underline;">{p.date} - {p.get_method_display()}</a>:</span>'
                 html += f'<span>- {obj.currency} {p.amount}</span></div>'
@@ -193,15 +194,6 @@ class InvoiceAdmin(ModelAdmin):
         if obj.status != InvoiceStatus.CLOSED:
             close_url = reverse('admin:invoices_invoice_close_btn', args=[obj.id])
             buttons_html += f'<a href="{close_url}" style="display: inline-block; background-color: #f59e0b; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-family: sans-serif; font-size: 13px; font-weight: bold;">🔒 Close Invoice (Lock Financials)</a>'
-            
-            # Apply Credit Note Button & Add Payment Button
-            if obj.balance_due > 0:
-                next_url = reverse('admin:invoices_invoice_change', args=[obj.id])
-                apply_url = reverse('admin:credit_notes_creditallocation_add') + f'?invoice={obj.id}&next={next_url}'
-                buttons_html += f'<a href="{apply_url}" style="display: inline-block; background-color: #10b981; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-family: sans-serif; font-size: 13px; font-weight: bold; margin-left: 10px;">💰 Apply Credit Note</a>'
-                
-                payment_url = reverse('admin:payments_payment_add') + f'?invoice={obj.id}&next={next_url}'
-                buttons_html += f'<a href="{payment_url}" style="display: inline-block; background-color: #3b82f6; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-family: sans-serif; font-size: 13px; font-weight: bold; margin-left: 10px;">💸 Add Payment</a>'
         elif obj.status == InvoiceStatus.CLOSED:
             # Reopen Button
             reopen_url = reverse('admin:invoices_invoice_reopen_btn', args=[obj.id])
@@ -220,6 +212,15 @@ class InvoiceAdmin(ModelAdmin):
             if obj.balance_due < 0:
                 cn_url = reverse('admin:invoices_invoice_generate_cn_btn', args=[obj.id])
                 buttons_html += f'<a href="{cn_url}" style="display: inline-block; background-color: #8b5cf6; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-family: sans-serif; font-size: 13px; font-weight: bold; margin-left: 10px;">✨ Generate Credit Note</a>'
+            
+        # Apply Credit Note Button & Add Payment Button (Available for both ISSUED and CLOSED, but not VOID)
+        if obj.status != InvoiceStatus.VOID and obj.balance_due > 0:
+            next_url = reverse('admin:invoices_invoice_change', args=[obj.id])
+            apply_url = reverse('admin:credit_notes_creditallocation_add') + f'?invoice={obj.id}&next={next_url}'
+            buttons_html += f'<a href="{apply_url}" style="display: inline-block; background-color: #10b981; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-family: sans-serif; font-size: 13px; font-weight: bold; margin-left: 10px;">💰 Apply Credit Note</a>'
+            
+            payment_url = reverse('admin:payments_payment_add') + f'?invoice={obj.id}&next={next_url}'
+            buttons_html += f'<a href="{payment_url}" style="display: inline-block; background-color: #3b82f6; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-family: sans-serif; font-size: 13px; font-weight: bold; margin-left: 10px;">💸 Add Payment</a>'
             
         # Global Void Button (if not already void)
         if obj.status != InvoiceStatus.VOID:
