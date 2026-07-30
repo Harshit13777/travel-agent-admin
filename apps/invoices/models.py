@@ -98,8 +98,10 @@ class Invoice(AuditModel):
     @property
     def payment_status(self):
         from apps.credit_notes.choices import CreditNoteStatus
+        from apps.invoices.choices import InvoicePaymentStatus
+        
         if self.balance_due <= Decimal('0.00'):
-            return "PAID"
+            return InvoicePaymentStatus.PAID
         payments_sum = sum(p.amount for p in self.payments.all())
         allocations_sum = sum(a.amount for a in self.credit_allocations.all())
         
@@ -109,8 +111,8 @@ class Invoice(AuditModel):
                 generated_credit_notes_sum = self.issued_credit_note.amount
         
         if (payments_sum + allocations_sum + generated_credit_notes_sum) > Decimal('0.00'):
-            return "PARTIAL"
-        return "UNPAID"
+            return InvoicePaymentStatus.PARTIAL
+        return InvoicePaymentStatus.UNPAID
 
 class InvoiceLine(AuditModel):
     """

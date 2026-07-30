@@ -29,15 +29,23 @@ class PaymentAdmin(ModelAdmin):
         return True # Handled in form validation or save_model normally, but we can't easily check invoice here since obj is None for add. Actually we can let them add, but they will fail in form clean if invoice is closed.
 
     def has_change_permission(self, request, obj=None):
-        from apps.invoices.choices import InvoiceStatus
-        if obj and obj.invoice.status == InvoiceStatus.CLOSED:
-            return False
+        if obj and obj.invoice:
+            from django.core.exceptions import ValidationError
+            from apps.payments.services import PaymentService
+            try:
+                PaymentService.validate_payment(obj.invoice)
+            except ValidationError:
+                return False
         return True
         
     def has_delete_permission(self, request, obj=None):
-        from apps.invoices.choices import InvoiceStatus
-        if obj and obj.invoice.status == InvoiceStatus.CLOSED:
-            return False
+        if obj and obj.invoice:
+            from django.core.exceptions import ValidationError
+            from apps.payments.services import PaymentService
+            try:
+                PaymentService.validate_payment(obj.invoice)
+            except ValidationError:
+                return False
         return True
         
     def get_readonly_fields(self, request, obj=None):

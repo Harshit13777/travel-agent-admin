@@ -15,3 +15,8 @@ class TravelerType(models.TextChoices):
     ADULT = 'ADULT', 'Adult'
     CHILD = 'CHILD', 'Child'
     INFANT = 'INFANT', 'Infant'
+
+class InvoicePaymentStatus(models.TextChoices):
+    UNPAID = 'UNPAID', 'Unpaid'
+    PARTIAL = 'PARTIAL', 'Partial'
+    PAID = 'PAID', 'Paid'

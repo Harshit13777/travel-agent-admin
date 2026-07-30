@@ -7,8 +7,14 @@ class PaymentService:
         """
         Validates if a payment can be made for the given invoice.
         """
-        if invoice and invoice.status == InvoiceStatus.CLOSED:
-            raise ValidationError("Cannot add or edit payments for a CLOSED invoice.")
+        if not invoice:
+            return
+            
+        if invoice.status == InvoiceStatus.VOID:
+            raise ValidationError("Cannot add or edit payments for a VOIDED invoice.")
+            
+        if invoice.status == InvoiceStatus.CLOSED:
+            raise ValidationError("Cannot add or edit payments for a CLOSED invoice. Please re-open the invoice first.")
 
     @staticmethod
     def save_payment(payment, user, change):
@@ -31,6 +37,11 @@ class PaymentService:
             },
             user=user
         )
+        
+        # Sync the invoice status automatically (e.g. UNPAID -> PARTIAL)
+        from apps.invoices.services import update_invoice_status
+        update_invoice_status(payment.invoice)
+        
         return payment
 
     @staticmethod
@@ -51,3 +62,7 @@ class PaymentService:
             metadata={"amount": str(amount), "method": method},
             user=user
         )
+        
+        # Sync the invoice status automatically (e.g. PARTIAL -> UNPAID)
+        from apps.invoices.services import update_invoice_status
+        update_invoice_status(payment.invoice)
