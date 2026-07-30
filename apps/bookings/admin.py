@@ -420,43 +420,7 @@ class BookingHistoryAdmin(ModelAdmin):
         return [f.name for f in self.model._meta.fields]
 
 
-@admin.action(description="Cancel Passenger(s)")
-def action_cancel_passenger(modeladmin, request, queryset):
-    from django.shortcuts import render
-    from django.http import HttpResponseRedirect
-    from apps.bookings.forms import PassengerCancellationForm
-    from apps.bookings.services import cancel_passenger_with_credit
-    
-    if queryset.count() > 1:
-        from django.contrib import messages
-        modeladmin.message_user(request, "You can only cancel one passenger at a time for MVP.", level=messages.ERROR)
-        return HttpResponseRedirect(request.get_full_path())
-        
-    if 'apply' in request.POST:
-        form = PassengerCancellationForm(request.POST)
-        if form.is_valid():
-            try:
-                for traveler in queryset:
-                    cancel_passenger_with_credit(traveler, form.cleaned_data, request.user)
-                
-                modeladmin.message_user(request, "Successfully cancelled passengers and processed refunds.")
-                return HttpResponseRedirect(request.get_full_path())
-            except Exception as e:
-                from django.contrib import messages
-                modeladmin.message_user(request, f"Error cancelling passenger: {str(e)}", level=messages.ERROR)
-    else:
-        form = PassengerCancellationForm(initial={'_selected_action': request.POST.getlist(admin.helpers.ACTION_CHECKBOX_NAME)})
-        
-    return render(
-        request,
-        "admin/bookings/cancel_passenger.html",
-        context={
-            "items": queryset,
-            "form": form,
-            "action_checkbox_name": admin.helpers.ACTION_CHECKBOX_NAME,
-            "action": "action_cancel_passenger"
-        }
-    )
+
 
 @admin.register(BookingTraveler)
 class BookingTravelerAdmin(ModelAdmin):
@@ -464,7 +428,6 @@ class BookingTravelerAdmin(ModelAdmin):
     list_select_related = ['traveler', 'booking_service']
     search_fields = ['traveler__first_name', 'traveler__last_name', 'booking_service__reference_number']
     autocomplete_fields = ['traveler', 'booking_service']
-    actions = [action_cancel_passenger]
 
 
 from apps.bookings.models import BookingTimeline
