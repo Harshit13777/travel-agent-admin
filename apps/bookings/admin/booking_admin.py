@@ -1,119 +1,9 @@
 from django.contrib import admin
-from unfold.admin import ModelAdmin, TabularInline
-from .models import Booking, ServiceType, BookingService, BookingTraveler, BookingHistory
+from unfold.admin import ModelAdmin
 
-class BookingServiceInline(TabularInline):
-    model = BookingService
-    extra = 1
-    autocomplete_fields = ['service_type', 'supplier']
-    exclude = ['display_order']
-
-    def get_readonly_fields(self, request, obj=None):
-        if obj and obj.is_locked:
-            return [f.name for f in self.model._meta.fields] + ['passengers_summary']
-        return ['passengers_summary', 'total_supplier_cost', 'total_service_charge', 'currency']
-
-    def passengers_summary(self, obj):
-        if not obj.pk:
-            return "Save to add passengers"
-        from django.utils.html import format_html
-        from django.urls import reverse
-        travelers = obj.booking_travelers.all()
-        names = [str(t.traveler.full_name) for t in travelers]
-        
-        url = reverse('admin:bookings_bookingservice_change', args=[obj.id])
-        link = format_html('<a href="{}" style="color: #3b82f6; font-weight: bold;">Edit Passengers</a>', url)
-        
-        if not names:
-            return format_html('0 Passengers - {}', link)
-        
-        display_names = ", ".join(names[:2])
-        if len(names) > 2:
-            display_names += f" (+{len(names)-2})"
-            
-        return format_html('{} <br/> {}', display_names, link)
-    passengers_summary.short_description = "Passengers"
-        
-    def has_add_permission(self, request, obj=None):
-        if obj and obj.is_locked:
-            return False
-        return super().has_add_permission(request, obj)
-        
-    def has_delete_permission(self, request, obj=None):
-        if obj and obj.is_locked:
-            return False
-        return super().has_delete_permission(request, obj)
-
-from django import forms
-
-class BookingTravelerForm(forms.ModelForm):
-    class Meta:
-        model = BookingTraveler
-        fields = '__all__'
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if self.instance and self.instance.pk:
-            from apps.cancellations.models import BookingCancellation
-            has_cancellation = BookingCancellation.objects.filter(
-                invoice_line_traveler__booking_traveler=self.instance
-            ).exists()
-            if has_cancellation:
-                # Completely lock this row if the passenger is cancelled
-                for field_name in self.fields:
-                    self.fields[field_name].disabled = True
-
-
-class BookingTravelerInline(TabularInline):
-    model = BookingTraveler
-    form = BookingTravelerForm
-    extra = 1
-    autocomplete_fields = ['traveler']
-
-    def get_readonly_fields(self, request, obj=None):
-        base = ['cancellation_info']
-        if obj and obj.booking.is_locked:
-            base.extend(['traveler', 'supplier_cost', 'service_charge', 'is_gst_applicable'])
-        return base
-        
-    def cancellation_info(self, obj):
-        if not obj or not obj.pk:
-            return "Active"
-        from apps.cancellations.models import BookingCancellation
-        cancellation = BookingCancellation.objects.filter(
-            invoice_line_traveler__booking_traveler=obj
-        ).first()
-        if cancellation:
-            from django.utils.html import format_html
-            from django.urls import reverse
-            edit_url = reverse('admin:cancellations_bookingcancellation_change', args=[cancellation.id])
-            return format_html('<a href="{}" style="color:red;font-weight:bold;text-decoration:underline;">CANCELLED (Refund: {})</a>', edit_url, cancellation.total_refund)
-            
-        booking = obj.booking_service.booking
-        if booking.is_locked:
-            invoice_snapshot = obj.invoice_snapshots.first()
-            if invoice_snapshot:
-                from apps.invoices.choices import InvoiceStatus
-                if invoice_snapshot.invoice_line.invoice.status != InvoiceStatus.CLOSED:
-                    from django.utils.html import format_html
-                    from django.urls import reverse
-                    add_url = reverse('admin:cancellations_bookingcancellation_add') + f'?invoice_line_traveler={invoice_snapshot.id}'
-                    return format_html('<a href="{}" style="background-color: #ef4444; color: white; padding: 4px 8px; text-decoration: none; border-radius: 4px; font-weight: bold;">Cancel Passenger</a>', add_url)
-                else:
-                    return "Active (Invoice Closed)"
-                
-        return "Active"
-    cancellation_info.short_description = "Cancellation Status"
-        
-    def has_add_permission(self, request, obj=None):
-        if obj and obj.booking.is_locked:
-            return False
-        return super().has_add_permission(request, obj)
-
-    def has_delete_permission(self, request, obj=None):
-        if obj and obj.booking.is_locked:
-            return False
-        return super().has_delete_permission(request, obj)
+from apps.bookings.models import Booking, BookingTimeline
+from apps.bookings.admin.inlines import BookingServiceInline
+from apps.bookings.admin.filters import InvoiceStatusFilter
 
 from apps.bookings.services import confirm_booking
 from apps.invoices.services import generate_invoice
@@ -130,7 +20,6 @@ def action_confirm_booking(modeladmin, request, queryset):
 
 @admin.action(description="Generate Invoice for selected bookings")
 def action_generate_invoice(modeladmin, request, queryset):
-    from apps.invoices.services import generate_invoice
     for booking in queryset:
         try:
             invoice = generate_invoice(booking, user=request.user)
@@ -138,27 +27,6 @@ def action_generate_invoice(modeladmin, request, queryset):
         except Exception as e:
             from django.contrib import messages
             modeladmin.message_user(request, f"Error generating invoice for {booking.booking_number}: {str(e)}", level=messages.ERROR)
-
-from django.contrib.admin import SimpleListFilter
-
-class InvoiceStatusFilter(SimpleListFilter):
-    title = 'Invoice Status'
-    parameter_name = 'invoice_status'
-
-    def lookups(self, request, model_admin):
-        return (
-            ('invoiced', 'Invoiced'),
-            ('not_invoiced', 'Not Invoiced'),
-        )
-
-    def queryset(self, request, queryset):
-        if self.value() == 'invoiced':
-            return queryset.filter(locked_at__isnull=False)
-        if self.value() == 'not_invoiced':
-            return queryset.filter(locked_at__isnull=True)
-        return queryset
-
-
 
 @admin.register(Booking)
 class BookingAdmin(ModelAdmin):
@@ -177,8 +45,6 @@ class BookingAdmin(ModelAdmin):
             'services__booking_travelers',
             'services__booking_travelers__traveler'
         )
-
-
 
     fieldsets = (
         ('Actions & Financials', {
@@ -332,6 +198,7 @@ class BookingAdmin(ModelAdmin):
 
     def save_formset(self, request, form, formset, change):
         instances = formset.save(commit=False)
+        from apps.bookings.models import BookingService
         from apps.bookings.services import update_booking_service, delete_booking_service
         for obj in formset.deleted_objects:
             delete_booking_service(obj, user=request.user)
@@ -341,96 +208,6 @@ class BookingAdmin(ModelAdmin):
             else:
                 instance.save()
         formset.save_m2m()
-
-@admin.register(ServiceType)
-class ServiceTypeAdmin(ModelAdmin):
-    list_display = ['name', 'display_order', 'is_active']
-    list_editable = ['display_order', 'is_active']
-    search_fields = ['name']
-
-@admin.register(BookingService)
-class BookingServiceAdmin(ModelAdmin):
-    list_display = ['booking', 'service_type', 'total_service_charge']
-    list_select_related = ['booking', 'service_type', 'supplier']
-    autocomplete_fields = ['booking', 'service_type', 'supplier']
-    search_fields = ['booking__booking_number', 'reference_number']
-    inlines = [BookingTravelerInline]
-    list_filter = ['service_type']
-    exclude = ['display_order']
-
-    def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        return qs.prefetch_related('booking_travelers')
-
-    def get_readonly_fields(self, request, obj=None):
-        readonly = ['total_supplier_cost', 'total_service_charge', 'currency']
-        if obj and obj.booking.is_locked:
-            readonly.extend(['booking', 'service_type', 'supplier'])
-        return readonly
-
-    def has_delete_permission(self, request, obj=None):
-        if obj and obj.booking.is_locked:
-            return False
-        return super().has_delete_permission(request, obj)
-        
-    def delete_model(self, request, obj):
-        from apps.bookings.services import delete_booking_service
-        delete_booking_service(obj, user=request.user)
-
-    def delete_queryset(self, request, queryset):
-        from apps.bookings.services import delete_booking_service
-        for obj in queryset:
-            delete_booking_service(obj, user=request.user)
-
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        if db_field.name == "booking":
-            from apps.bookings.models import Booking
-            kwargs["queryset"] = Booking.objects.filter(locked_at__isnull=True)
-        return super().formfield_for_foreignkey(db_field, request, **kwargs)
-
-    def save_formset(self, request, form, formset, change):
-        instances = formset.save(commit=False)
-        from apps.bookings.services import update_booking_traveler, delete_booking_traveler
-        for obj in formset.deleted_objects:
-            delete_booking_traveler(obj, user=request.user)
-        for instance in instances:
-            if isinstance(instance, BookingTraveler):
-                update_booking_traveler(instance, user=request.user)
-            else:
-                instance.save()
-        formset.save_m2m()
-
-@admin.register(BookingHistory)
-class BookingHistoryAdmin(ModelAdmin):
-    list_display = ['booking', 'action', 'user', 'created_at']
-    list_select_related = ['booking', 'user']
-    autocomplete_fields = ['booking', 'user']
-    search_fields = ['booking__booking_number', 'action']
-    
-    def has_add_permission(self, request, obj=None):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-        
-    def get_readonly_fields(self, request, obj=None):
-        return [f.name for f in self.model._meta.fields]
-
-
-
-
-@admin.register(BookingTraveler)
-class BookingTravelerAdmin(ModelAdmin):
-    list_display = ['traveler', 'booking_service', 'passenger_status']
-    list_select_related = ['traveler', 'booking_service']
-    search_fields = ['traveler__first_name', 'traveler__last_name', 'booking_service__reference_number']
-    autocomplete_fields = ['traveler', 'booking_service']
-
-
-from apps.bookings.models import BookingTimeline
 
 @admin.register(BookingTimeline)
 class BookingTimelineAdmin(ModelAdmin):
@@ -561,7 +338,15 @@ class BookingTimelineAdmin(ModelAdmin):
                         })
                         
         # Collect signatures of live objects to prevent duplicating "Added" audit logs
-        live_signatures = []
+        live_signatures = [
+            f"Booking created for {obj.customer.name}."
+        ]
+        
+        for service in obj.services.all():
+            live_signatures.append(f"Service {service.service_type.name} added to booking.")
+            for traveler in service.booking_travelers.all():
+                live_signatures.append(f"Passenger {traveler.traveler.full_name} added to service.")
+                
         if hasattr(obj, 'invoice'):
             inv = obj.invoice
             live_signatures.append(f"Invoice {inv.invoice_number} generated")
@@ -579,9 +364,20 @@ class BookingTimelineAdmin(ModelAdmin):
 
         # 8. Audit Log Events (Deletions, Updates, Status Changes, and Historical Adds)
         for history in obj.history.all():
-            # Skip ADDED/GENERATED audit logs if the live object is already rendering in the timeline
+            from apps.bookings.choices import BookingHistoryAction
+            
+            creation_actions = [
+                BookingHistoryAction.BOOKING_CREATED,
+                BookingHistoryAction.SERVICE_CREATED,
+                BookingHistoryAction.PASSENGER_ADDED,
+                BookingHistoryAction.INVOICE_GENERATED,
+                BookingHistoryAction.PAYMENT_ADDED,
+                BookingHistoryAction.CREDIT_NOTE_GENERATED,
+            ]
+            
+            # Skip creation/addition audit logs if the live object is already rendering in the timeline
             is_duplicate = False
-            if 'ADDED' in history.action or 'GENERATED' in history.action:
+            if history.action in creation_actions:
                 for sig in live_signatures:
                     if sig in history.description:
                         is_duplicate = True
@@ -591,15 +387,28 @@ class BookingTimelineAdmin(ModelAdmin):
                 
             # Determine icon based on action
             icon = '📝'
-            if 'DELETED' in history.action or 'CANCELLED' in history.action:
+            deletion_actions = [
+                BookingHistoryAction.BOOKING_DELETED, BookingHistoryAction.SERVICE_DELETED, 
+                BookingHistoryAction.PASSENGER_DELETED, BookingHistoryAction.BOOKING_CANCELLED, 
+                BookingHistoryAction.SERVICE_CANCELLED, BookingHistoryAction.PASSENGER_CANCELLED, 
+                BookingHistoryAction.INVOICE_CANCELLED, BookingHistoryAction.CREDIT_NOTE_VOIDED, 
+                BookingHistoryAction.PAYMENT_DELETED
+            ]
+            update_actions = [
+                BookingHistoryAction.BOOKING_UPDATED, BookingHistoryAction.SERVICE_UPDATED, 
+                BookingHistoryAction.PASSENGER_UPDATED, BookingHistoryAction.PAYMENT_UPDATED,
+                BookingHistoryAction.BOOKING_CONFIRMED
+            ]
+            
+            if history.action in deletion_actions:
                 icon = '🗑️'
-            elif 'UPDATED' in history.action:
+            elif history.action in update_actions:
                 icon = '✏️'
-            elif 'CLOSED' in history.action:
+            elif history.action == BookingHistoryAction.INVOICE_CLOSED:
                 icon = '🔒'
-            elif 'OPENED' in history.action:
+            elif history.action == BookingHistoryAction.INVOICE_OPENED:
                 icon = '🔓'
-            elif 'ADDED' in history.action or 'GENERATED' in history.action:
+            elif history.action in creation_actions:
                 icon = '⚡'
                 
             events.append({
