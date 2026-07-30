@@ -10,7 +10,7 @@ from apps.bookings.services import log_booking_history
 from apps.common.services import get_company_settings
 from django.core.exceptions import ValidationError
 
-def generate_invoice(booking: Booking, user=None, applied_credit_notes=None) -> Invoice:
+def generate_invoice(booking: Booking, user=None) -> Invoice:
     """
     Generate an invoice for a confirmed booking.
     
@@ -26,7 +26,6 @@ def generate_invoice(booking: Booking, user=None, applied_credit_notes=None) -> 
     - Prevent duplicate invoices.
     - Copy Booking financial totals into the Invoice.
     - Copy BookingServices to InvoiceLines for traceability.
-    - Apply CreditNotes via CreditAllocation.
     - Generate Invoice Number using generate_invoice_number().
     - Set Booking.locked_at.
     - Log BookingHistory using INVOICE_GENERATED.
@@ -192,21 +191,7 @@ def generate_invoice(booking: Booking, user=None, applied_credit_notes=None) -> 
         invoice.final_payable = grand_total
         invoice.status = InvoiceStatus.ISSUED
         invoice.save()
-        
-        # Credit notes logic...
-        credit_applied = Decimal("0.00")
-        if applied_credit_notes:
-            from apps.credit_notes.services import CreditNoteService
-            for cn in applied_credit_notes:
-                remaining = cn.remaining_amount
-                if remaining > 0:
-                    amount_to_apply = min(remaining, grand_total - credit_applied)
-                    if amount_to_apply > 0:
-                        credit_applied += amount_to_apply
-                        CreditNoteService.allocate_credit(cn.id, invoice.id, amount_to_apply)
-                        
-        final_payable = max(Decimal("0.00"), grand_total - credit_applied)
-        invoice.final_payable = final_payable
+        invoice.final_payable = grand_total
         invoice.save(update_fields=['final_payable'])
         
         booking.locked_at = timezone.now()
@@ -260,16 +245,32 @@ def close_invoice(invoice: Invoice, user=None) -> Invoice:
     return invoice
 
 def reopen_invoice(invoice: Invoice, user=None) -> Invoice:
-    if invoice.status == InvoiceStatus.CLOSED:
-        invoice.status = InvoiceStatus.ISSUED
-        invoice.save(update_fields=['status'])
-        from apps.bookings.choices import BookingHistoryAction
-        log_booking_history(
-            booking=invoice.booking,
-            action=BookingHistoryAction.INVOICE_OPENED,
-            description=f"Invoice {invoice.invoice_number} was RE-OPENED. Financials unlocked.",
-            metadata={"invoice_id": invoice.id},
-            user=user
-        )
-        update_invoice_status(invoice)
+    from django.core.exceptions import ValidationError
+    from apps.invoices.choices import InvoiceStatus
+    
+    if invoice.status != InvoiceStatus.CLOSED:
+        raise ValidationError("Invoice is not closed.")
+        
+    # Check generated credit note
+    if hasattr(invoice, 'issued_credit_note') and invoice.issued_credit_note:
+        cn = invoice.issued_credit_note
+        if cn.allocated_amount > 0:
+            raise ValidationError("Cannot re-open: This invoice has generated a Credit Note that has already been allocated. Please remove the allocation first.")
+        else:
+            from apps.credit_notes.services import CreditNoteService
+            CreditNoteService.delete_credit_note(cn.id, user=user)
+
+    invoice.status = InvoiceStatus.ISSUED
+    invoice.save(update_fields=['status'])
+    
+    from apps.bookings.choices import BookingHistoryAction
+    from apps.bookings.services import log_booking_history
+    log_booking_history(
+        booking=invoice.booking,
+        action=BookingHistoryAction.INVOICE_OPENED,
+        description=f"Invoice {invoice.invoice_number} was RE-OPENED. Financials unlocked.",
+        metadata={"invoice_id": invoice.id},
+        user=user
+    )
+    update_invoice_status(invoice)
     return invoice
