@@ -19,6 +19,9 @@ class CreditNoteService:
         if amount <= 0:
             raise ValidationError("Allocation amount must be greater than zero.")
             
+        if invoice.status == InvoiceStatus.VOID:
+            raise ValidationError("Cannot allocate credit to a VOIDED invoice.")
+            
         if credit_note.remaining_amount < amount:
             raise ValidationError(f"Cannot allocate {amount}. Only {credit_note.remaining_amount} remains on this credit note.")
             

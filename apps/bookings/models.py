@@ -44,7 +44,13 @@ class Booking(SoftDeleteModel):
         
     @property
     def has_invoice(self):
-        return self.invoices.exists()
+        from apps.invoices.choices import InvoiceStatus
+        return self.invoices.exclude(status=InvoiceStatus.VOID).exists()
+        
+    @property
+    def invoice(self):
+        from apps.invoices.choices import InvoiceStatus
+        return self.invoices.exclude(status=InvoiceStatus.VOID).first()
         
     @property
     def is_locked(self):

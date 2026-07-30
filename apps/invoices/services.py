@@ -31,8 +31,8 @@ def generate_invoice(booking: Booking, user=None) -> Invoice:
     - Log BookingHistory using INVOICE_GENERATED.
     - Run inside transaction.atomic().
     """
-    if hasattr(booking, 'invoice'):
-        raise ValidationError("An invoice already exists for this booking.")
+    if booking.has_invoice:
+        raise ValidationError("An active invoice already exists for this booking.")
         
     if not booking.services.exists():
         raise ValidationError("Booking must have at least one service to generate an invoice.")
@@ -207,16 +207,39 @@ def generate_invoice(booking: Booking, user=None) -> Invoice:
         return invoice
 
 def cancel_invoice(invoice: Invoice, user=None) -> Invoice:
+    from django.core.exceptions import ValidationError
     if invoice.status == InvoiceStatus.VOID:
         return invoice
+        
+    # Validation: Cannot void if there are payments
+    if invoice.payments.exists():
+        raise ValidationError("Cannot void invoice: there are active payments. Please refund or delete the payments first.")
+        
+    # Validation: Cannot void if there are credit allocations applied to this invoice
+    if invoice.credit_allocations.exists():
+        raise ValidationError("Cannot void invoice: there are credit notes applied to it. Please remove the allocations first.")
+        
+    # Validation: What if this invoice generated a credit note?
+    if hasattr(invoice, 'issued_credit_note') and invoice.issued_credit_note:
+        cn = invoice.issued_credit_note
+        if cn.allocated_amount > 0:
+            raise ValidationError("Cannot void invoice: it generated a Credit Note that has already been allocated to another invoice. Please remove that allocation first.")
+        else:
+            from apps.credit_notes.services import CreditNoteService
+            CreditNoteService.delete_credit_note(cn.id, user=user)
         
     with transaction.atomic():
         invoice.status = InvoiceStatus.VOID
         invoice.save(update_fields=['status'])
+        
+        # Unlock the booking so a new invoice can be generated if needed
+        invoice.booking.locked_at = None
+        invoice.booking.save(update_fields=['locked_at'])
+        
         log_booking_history(
             booking=invoice.booking,
             action=BookingHistoryAction.INVOICE_CANCELLED,
-            description=f"Invoice {invoice.invoice_number} was voided.",
+            description=f"Invoice {invoice.invoice_number} was VOIDED.",
             metadata={"invoice_id": invoice.id},
             user=user
         )

@@ -6,7 +6,7 @@ from apps.bookings.models import Booking, BookingService, BookingTraveler
 from apps.invoices.choices import InvoiceStatus, InvoiceCancellationStatus, TravelerType
 
 class Invoice(AuditModel):
-    booking = models.OneToOneField(Booking, on_delete=models.PROTECT, related_name='invoice')
+    booking = models.ForeignKey(Booking, on_delete=models.PROTECT, related_name='invoices')
     invoice_number = models.CharField(max_length=50, unique=True, db_index=True)
     invoice_date = models.DateField(db_index=True)
     due_date = models.DateField()
