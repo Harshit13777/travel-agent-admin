@@ -142,8 +142,11 @@ def update_booking_traveler(booking_traveler, user=None):
     Validates and updates a BookingTraveler.
     Business logic: Cannot modify financial fields once invoiced.
     """
+    is_new = not booking_traveler.pk
     old_state = None
-    if booking_traveler.pk:
+    booking = booking_traveler.booking_service.booking
+    
+    if not is_new:
         original = BookingTraveler.objects.get(pk=booking_traveler.pk)
         old_state = model_to_dict(original)
         
@@ -157,7 +160,6 @@ def update_booking_traveler(booking_traveler, user=None):
             from django.core.exceptions import ValidationError
             raise ValidationError(f"Cannot modify passenger {original.traveler.first_name} because they are cancelled.")
             
-        booking = booking_traveler.booking_service.booking
         if booking.is_locked:
             if (original.supplier_cost != booking_traveler.supplier_cost or 
                 original.service_charge != booking_traveler.service_charge or 
@@ -170,7 +172,7 @@ def update_booking_traveler(booking_traveler, user=None):
     
     new_state = model_to_dict(booking_traveler)
     # Audit log
-    action = BookingHistoryAction.PASSENGER_UPDATED
+    action = BookingHistoryAction.PASSENGER_ADDED if is_new else BookingHistoryAction.PASSENGER_UPDATED
     log_booking_history(
         booking=booking,
         action=action,
@@ -208,8 +210,9 @@ def update_booking(booking, user=None):
     )
 
 def update_booking_service(booking_service, user=None):
+    is_new = not booking_service.pk
     old_state = None
-    if booking_service.pk:
+    if not is_new:
         original = BookingService.objects.get(pk=booking_service.pk)
         old_state = model_to_dict(original)
         if original.booking.is_locked:
@@ -223,9 +226,10 @@ def update_booking_service(booking_service, user=None):
     booking_service.save()
     new_state = model_to_dict(booking_service)
     
+    action = BookingHistoryAction.SERVICE_CREATED if is_new else BookingHistoryAction.SERVICE_UPDATED
     log_booking_history(
         booking=booking_service.booking,
-        action=BookingHistoryAction.SERVICE_UPDATED,
+        action=action,
         description=f"Service {booking_service.service_type.name} details updated.",
         metadata={"booking_service_id": booking_service.id},
         old_state=old_state,

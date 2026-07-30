@@ -121,6 +121,21 @@ class BookingService(SoftDeleteModel):
         return sum(t.service_charge for t in self.booking_travelers.exclude(passenger_status='CANCELLED'))
 
     @property
+    def total_with_gst(self):
+        from apps.common.services import get_company_settings
+        from decimal import Decimal, ROUND_HALF_UP
+        settings = get_company_settings()
+        
+        if not settings.gst_enabled:
+            return self.total_supplier_cost + self.total_service_charge
+            
+        taxable_amount = sum(t.service_charge for t in self.booking_travelers.exclude(passenger_status='CANCELLED') if t.is_gst_applicable)
+        total_rate = settings.cgst_rate + settings.sgst_rate + settings.igst_rate
+        gst_amount = (taxable_amount * total_rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        
+        return self.total_supplier_cost + self.total_service_charge + gst_amount
+
+    @property
     def profit(self):
         return self.total_service_charge - self.total_supplier_cost
 

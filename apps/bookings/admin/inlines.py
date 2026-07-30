@@ -3,50 +3,6 @@ from unfold.admin import TabularInline
 
 from apps.bookings.models import BookingService, BookingTraveler
 
-class BookingServiceInline(TabularInline):
-    model = BookingService
-    extra = 1
-    autocomplete_fields = ['service_type', 'supplier']
-    exclude = ['display_order']
-
-    def get_readonly_fields(self, request, obj=None):
-        # obj is the parent Booking
-        base = ['passengers_summary', 'total_supplier_cost', 'total_service_charge', 'currency']
-        if obj and obj.is_locked:
-            base.extend(['service_type', 'supplier'])
-        return base
-
-    def passengers_summary(self, obj):
-        if not obj.pk:
-            return "Save to add passengers"
-        from django.utils.html import format_html
-        from django.urls import reverse
-        travelers = obj.booking_travelers.all()
-        names = [str(t.traveler.full_name) for t in travelers]
-        
-        url = reverse('admin:bookings_bookingservice_change', args=[obj.id])
-        link = format_html('<a href="{}" style="color: #3b82f6; font-weight: bold;">Edit Passengers</a>', url)
-        
-        if not names:
-            return format_html('0 Passengers - {}', link)
-        
-        display_names = ", ".join(names[:2])
-        if len(names) > 2:
-            display_names += f" (+{len(names)-2})"
-            
-        return format_html('{} <br/> {}', display_names, link)
-    passengers_summary.short_description = "Passengers"
-        
-    def has_add_permission(self, request, obj=None):
-        if obj and obj.is_locked:
-            return False
-        return super().has_add_permission(request, obj)
-        
-    def has_delete_permission(self, request, obj=None):
-        if obj and obj.is_locked:
-            return False
-        return super().has_delete_permission(request, obj)
-
 class BookingTravelerForm(forms.ModelForm):
     class Meta:
         model = BookingTraveler
@@ -69,6 +25,7 @@ class BookingTravelerInline(TabularInline):
     form = BookingTravelerForm
     extra = 1
     autocomplete_fields = ['traveler']
+    exclude = ['is_deleted', 'deleted_at']
 
     def get_readonly_fields(self, request, obj=None):
         # obj is the parent BookingService

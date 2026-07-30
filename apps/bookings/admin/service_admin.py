@@ -18,11 +18,21 @@ class BookingServiceAdmin(ModelAdmin):
     search_fields = ['booking__booking_number', 'reference_number']
     inlines = [BookingTravelerInline]
     list_filter = ['service_type']
-    exclude = ['display_order']
+    exclude = ['display_order', 'is_deleted', 'deleted_at']
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         return qs.prefetch_related('booking_travelers')
+
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        # If navigating from the Booking page (which passes from_booking=1), hide the booking dropdown
+        # so the user can't accidentally change the parent booking.
+        if 'from_booking' in request.GET:
+            if 'booking' in form.base_fields:
+                from django import forms
+                form.base_fields['booking'].widget = forms.HiddenInput()
+        return form
 
     def get_readonly_fields(self, request, obj=None):
         readonly = ['total_supplier_cost', 'total_service_charge', 'currency']
@@ -62,3 +72,37 @@ class BookingServiceAdmin(ModelAdmin):
             else:
                 instance.save()
         formset.save_m2m()
+
+    def response_add(self, request, obj, post_url_continue=None):
+        res = super().response_add(request, obj, post_url_continue)
+        if "_continue" in request.POST and "from_booking" in request.GET:
+            if "?" in res['Location']:
+                res['Location'] += '&from_booking=1'
+            else:
+                res['Location'] += '?from_booking=1'
+        elif "_addanother" not in request.POST and "_continue" not in request.POST and "_popup" not in request.POST:
+            from django.urls import reverse
+            res['Location'] = reverse('admin:bookings_booking_change', args=[obj.booking.id])
+        return res
+
+    def response_change(self, request, obj):
+        res = super().response_change(request, obj)
+        if "_continue" in request.POST and "from_booking" in request.GET:
+            if "?" in res['Location']:
+                res['Location'] += '&from_booking=1'
+            else:
+                res['Location'] += '?from_booking=1'
+        elif "_addanother" not in request.POST and "_continue" not in request.POST and "_popup" not in request.POST:
+            from django.urls import reverse
+            res['Location'] = reverse('admin:bookings_booking_change', args=[obj.booking.id])
+        return res
+
+    def response_delete(self, request, obj_display, obj_id):
+        res = super().response_delete(request, obj_display, obj_id)
+        # Because the service is soft-deleted, we can still fetch it to find its parent booking
+        from apps.bookings.models import BookingService
+        service = BookingService.all_objects.filter(pk=obj_id).first()
+        if service:
+            from django.urls import reverse
+            res['Location'] = reverse('admin:bookings_booking_change', args=[service.booking_id])
+        return res

@@ -2,7 +2,6 @@ from django.contrib import admin
 from unfold.admin import ModelAdmin
 
 from apps.bookings.models import Booking, BookingTimeline
-from apps.bookings.admin.inlines import BookingServiceInline
 from apps.bookings.admin.filters import InvoiceStatusFilter
 
 from apps.bookings.services import confirm_booking
@@ -35,7 +34,7 @@ class BookingAdmin(ModelAdmin):
     list_filter = [InvoiceStatusFilter, 'status', 'priority', 'booking_source']
     autocomplete_fields = ['customer', 'assigned_to']
     list_select_related = ['customer', 'assigned_to']
-    inlines = [BookingServiceInline]
+    inlines = []
     actions = [action_confirm_booking, action_generate_invoice]
 
     def get_queryset(self, request):
@@ -54,6 +53,10 @@ class BookingAdmin(ModelAdmin):
         ('Booking Details', {
             'fields': ('booking_number', 'title', 'customer', 'status', 'passenger_list', 'priority', 'booking_source', 'assigned_to', 'notes', 'locked_at'),
             'classes': ('tab',)
+        }),
+        ('Services', {
+            'fields': ('services_list',),
+            'classes': ('tab',)
         })
     )
 
@@ -68,7 +71,7 @@ class BookingAdmin(ModelAdmin):
         return super().get_fieldsets(request, obj)
 
     def get_readonly_fields(self, request, obj=None):
-        readonly = ['invoice_link', 'passenger_list', 'generate_invoice_button', 'view_history_button']
+        readonly = ['invoice_link', 'passenger_list', 'generate_invoice_button', 'view_history_button', 'services_list']
         if obj is None:
             return []
             
@@ -182,11 +185,54 @@ class BookingAdmin(ModelAdmin):
             return ", ".join(names[:3]) + f" (+{len(names)-3} more)"
         return ", ".join(names)
     passenger_list.short_description = "Passengers"
+    
+    def services_list(self, obj):
+        if not obj or not obj.pk:
+            return "Save booking first to add services."
+            
+        services = obj.services.all()
+        from django.utils.html import format_html
+        from django.urls import reverse
+        
+        add_url = reverse('admin:bookings_bookingservice_add') + f'?booking={obj.id}&from_booking=1'
+        add_btn = format_html('<a href="{}" style="display:inline-block; background-color:#10b981; color:white; padding:8px 16px; border-radius:6px; text-decoration:none; font-family:sans-serif; font-size:14px; font-weight:bold; margin-bottom:12px;">➕ Add New Service</a>', add_url)
+        
+        if not services.exists():
+            return format_html('<div style="padding:10px; background:#f9fafb; border-radius:6px; border:1px solid #e5e7eb;">{}<br><br><span style="color:#6b7280; font-family:sans-serif;">No services added yet. Click above to add flights, hotels, or other services to this booking.</span></div>', add_btn)
+            
+        html = f'<div style="margin-bottom:16px;">{add_btn}</div>'
+        html += '<table style="width:100%; text-align:left; border-collapse:collapse; font-family:sans-serif; box-shadow:0 1px 3px rgba(0,0,0,0.1); border-radius:6px; overflow:hidden;">'
+        html += '<tr style="background-color:#f3f4f6; border-bottom:1px solid #e5e7eb;">'
+        html += '<th style="padding:12px 16px; font-weight:600; color:#374151;">Service Type</th>'
+        html += '<th style="padding:12px 16px; font-weight:600; color:#374151;">Supplier</th>'
+        html += '<th style="padding:12px 16px; font-weight:600; color:#374151;">Supplier Cost</th>'
+        html += '<th style="padding:12px 16px; font-weight:600; color:#374151;">Service Charge</th>'
+        html += '<th style="padding:12px 16px; font-weight:600; color:#374151;">Total (Inc GST)</th>'
+        html += '<th style="padding:12px 16px; font-weight:600; color:#374151;">Action</th>'
+        html += '</tr>'
+        
+        for idx, s in enumerate(services):
+            edit_url = reverse('admin:bookings_bookingservice_change', args=[s.id]) + '?from_booking=1'
+            bg_color = '#ffffff' if idx % 2 == 0 else '#f9fafb'
+            html += f'<tr style="background-color:{bg_color}; border-bottom:1px solid #e5e7eb;">'
+            html += f'<td style="padding:12px 16px; color:#111827;">{s.service_type.name}</td>'
+            html += f'<td style="padding:12px 16px; color:#4b5563;">{s.supplier.name if s.supplier else "-"}</td>'
+            html += f'<td style="padding:12px 16px; color:#111827;">{s.currency} {s.total_supplier_cost}</td>'
+            html += f'<td style="padding:12px 16px; color:#111827;">{s.currency} {s.total_service_charge}</td>'
+            html += f'<td style="padding:12px 16px; font-weight:600; color:#111827;">{s.currency} {s.total_with_gst}</td>'
+            html += f'<td style="padding:12px 16px;"><a href="{edit_url}" style="display:inline-block; color:#3b82f6; text-decoration:none; font-weight:bold; border:1px solid #3b82f6; padding:4px 12px; border-radius:4px;">Edit & Manage Passengers ➔</a></td>'
+            html += f'</tr>'
+            
+        html += '</table>'
+        from django.utils.safestring import mark_safe
+        return mark_safe(html)
+    services_list.short_description = "Attached Services"
 
     def get_exclude(self, request, obj=None):
+        exclude = ['is_deleted', 'deleted_at']
         if obj is None:
-            return ['booking_number', 'locked_at']
-        return []
+            exclude.extend(['booking_number', 'locked_at'])
+        return exclude
 
     def save_model(self, request, obj, form, change):
         if not change:
@@ -196,18 +242,15 @@ class BookingAdmin(ModelAdmin):
             from apps.bookings.services import update_booking
             update_booking(booking=obj, user=request.user)
 
-    def save_formset(self, request, form, formset, change):
-        instances = formset.save(commit=False)
-        from apps.bookings.models import BookingService
-        from apps.bookings.services import update_booking_service, delete_booking_service
-        for obj in formset.deleted_objects:
-            delete_booking_service(obj, user=request.user)
-        for instance in instances:
-            if isinstance(instance, BookingService):
-                update_booking_service(instance, user=request.user)
-            else:
-                instance.save()
-        formset.save_m2m()
+    def response_add(self, request, obj, post_url_continue=None):
+        """
+        Force standard 'Save' to act like 'Save and continue editing'
+        so the user isn't kicked back to the changelist and can immediately add services.
+        """
+        if "_addanother" not in request.POST and "_popup" not in request.POST:
+            request.POST = request.POST.copy()
+            request.POST['_continue'] = True
+        return super().response_add(request, obj, post_url_continue)
 
 @admin.register(BookingTimeline)
 class BookingTimelineAdmin(ModelAdmin):
