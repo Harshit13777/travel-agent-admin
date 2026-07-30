@@ -9,6 +9,14 @@ from apps.invoices.choices import InvoiceStatus
 class CreditNoteService:
     
     @classmethod
+    def can_modify(cls, credit_note):
+        return credit_note.status != CreditNoteStatus.VOID
+
+    @classmethod
+    def can_delete_credit_note(cls, credit_note):
+        return credit_note.allocated_amount == 0
+        
+    @classmethod
     def validate_allocation(cls, credit_note, invoice, amount):
         if not credit_note or not invoice or not amount:
             return
@@ -77,6 +85,9 @@ class CreditNoteService:
         credit_note = CreditNote.objects.select_for_update().get(id=allocation.credit_note_id)
         invoice = Invoice.objects.select_for_update().get(id=allocation.invoice_id)
         
+        if invoice.status == InvoiceStatus.VOID:
+            raise ValidationError("Cannot deallocate credit from a VOIDED invoice.")
+            
         if invoice.status == InvoiceStatus.CLOSED:
             raise ValidationError("Cannot deallocate credit from a CLOSED invoice.")
             
@@ -110,6 +121,9 @@ class CreditNoteService:
         credit_note = CreditNote.objects.select_for_update().get(id=allocation.credit_note_id)
         invoice = Invoice.objects.select_for_update().get(id=allocation.invoice_id)
         
+        if invoice.status == InvoiceStatus.VOID:
+            raise ValidationError("Cannot edit credit allocation on a VOIDED invoice.")
+            
         if invoice.status == InvoiceStatus.CLOSED:
             raise ValidationError("Cannot edit credit allocation on a CLOSED invoice.")
             

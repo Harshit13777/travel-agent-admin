@@ -245,6 +245,13 @@ def cancel_invoice(invoice: Invoice, user=None) -> Invoice:
         )
         return invoice
 
+def can_modify_invoice(invoice: Invoice) -> bool:
+    """
+    Returns True if the invoice fields can be modified (e.g. remarks).
+    Does NOT affect payments or credit allocations.
+    """
+    return invoice.status not in [InvoiceStatus.CLOSED, InvoiceStatus.VOID]
+
 def update_invoice_status(invoice: Invoice) -> Invoice:
     with transaction.atomic():
         new_status = invoice.payment_status

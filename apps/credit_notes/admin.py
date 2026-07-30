@@ -76,9 +76,16 @@ class CreditNoteAdmin(ModelAdmin):
     def has_add_permission(self, request):
         return False
         
+    def has_change_permission(self, request, obj=None):
+        if obj:
+            from apps.credit_notes.services import CreditNoteService
+            return CreditNoteService.can_modify(obj)
+        return True
+
     def has_delete_permission(self, request, obj=None):
-        if obj and obj.allocated_amount == 0:
-            return True
+        if obj:
+            from apps.credit_notes.services import CreditNoteService
+            return CreditNoteService.can_delete_credit_note(obj)
         return False
 
     def delete_model(self, request, obj):
@@ -121,12 +128,7 @@ class CreditAllocationAdmin(ModelAdmin):
         return False # Immutability - Allocations should only be created or deleted
         
     def has_delete_permission(self, request, obj=None):
-        if obj and obj.invoice:
-            from apps.invoices.choices import InvoiceStatus
-            if obj.invoice.status == InvoiceStatus.CLOSED:
-                return False
-            return True
-        return True # Allow bulk delete UI to show up, we will validate in delete_queryset
+        return True # Handled in validate_deallocation or service layer during deletion
         
     def save_model(self, request, obj, form, change):
         from apps.credit_notes.services import CreditNoteService
@@ -150,16 +152,34 @@ class CreditAllocationAdmin(ModelAdmin):
             CreditNoteService.deallocate_credit(obj.id, user=request.user)
             
     def response_add(self, request, obj, post_url_continue=None):
-        next_url = request.GET.get('next')
-        if next_url and '_addanother' not in request.POST and '_continue' not in request.POST:
-            from django.http import HttpResponseRedirect
-            return HttpResponseRedirect(next_url)
+        if '_addanother' not in request.POST and '_continue' not in request.POST:
+            if obj and obj.invoice_id:
+                from django.urls import reverse
+                from django.http import HttpResponseRedirect
+                return HttpResponseRedirect(reverse('admin:invoices_invoice_change', args=[obj.invoice_id]))
         return super().response_add(request, obj, post_url_continue)
         
+    def response_change(self, request, obj):
+        if '_addanother' not in request.POST and '_continue' not in request.POST:
+            if obj and obj.invoice_id:
+                from django.urls import reverse
+                from django.http import HttpResponseRedirect
+                return HttpResponseRedirect(reverse('admin:invoices_invoice_change', args=[obj.invoice_id]))
+        return super().response_change(request, obj)
 
-    def response_delete(self, request, obj_display, obj_id):
-        next_url = request.GET.get('next')
-        if next_url:
+    def delete_view(self, request, object_id, extra_context=None):
+        try:
+            obj = self.get_object(request, object_id)
+            invoice_id = obj.invoice_id if obj else None
+        except Exception:
+            invoice_id = None
+            
+        response = super().delete_view(request, object_id, extra_context)
+        
+        if request.method == 'POST' and invoice_id:
             from django.http import HttpResponseRedirect
-            return HttpResponseRedirect(next_url)
-        return super().response_delete(request, obj_display, obj_id)
+            if isinstance(response, HttpResponseRedirect):
+                from django.urls import reverse
+                return HttpResponseRedirect(reverse('admin:invoices_invoice_change', args=[invoice_id]))
+                
+        return response
