@@ -191,7 +191,7 @@ class InvoiceAdmin(ModelAdmin):
         
         buttons_html = '<div style="display: flex; gap: 10px;">'
         
-        if obj.status != InvoiceStatus.CLOSED:
+        if obj.status not in [InvoiceStatus.CLOSED, InvoiceStatus.VOID]:
             close_url = reverse('admin:invoices_invoice_close_btn', args=[obj.id])
             buttons_html += f'<a href="{close_url}" style="display: inline-block; background-color: #f59e0b; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-family: sans-serif; font-size: 13px; font-weight: bold;">🔒 Close Invoice (Lock Financials)</a>'
             

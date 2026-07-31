@@ -24,8 +24,26 @@ class BookingTravelerInline(TabularInline):
     model = BookingTraveler
     form = BookingTravelerForm
     extra = 1
-    autocomplete_fields = ['traveler']
     exclude = ['is_deleted', 'deleted_at']
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "traveler":
+            booking_id = None
+            object_id = request.resolver_match.kwargs.get('object_id')
+            if object_id:
+                from apps.bookings.models import BookingService
+                service = BookingService.objects.filter(pk=object_id).first()
+                if service:
+                    booking_id = service.booking_id
+            else:
+                booking_id = request.GET.get('booking')
+                
+            if booking_id:
+                from apps.bookings.models import Booking
+                booking = Booking.objects.filter(pk=booking_id).first()
+                if booking:
+                    kwargs["queryset"] = db_field.remote_field.model.objects.filter(customer=booking.customer)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def get_readonly_fields(self, request, obj=None):
         # obj is the parent BookingService

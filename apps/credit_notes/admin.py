@@ -122,8 +122,26 @@ class CreditAllocationForm(forms.ModelForm):
 class CreditAllocationAdmin(ModelAdmin):
     form = CreditAllocationForm
     list_display = ['credit_note', 'invoice', 'amount', 'created_at']
-    autocomplete_fields = ['credit_note', 'invoice']
+    autocomplete_fields = ['invoice']
     
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "credit_note":
+            invoice_id = request.GET.get('invoice')
+            if invoice_id:
+                from apps.invoices.models import Invoice
+                invoice = Invoice.objects.filter(pk=invoice_id).select_related('booking__customer').first()
+                if invoice and invoice.booking and invoice.booking.customer:
+                    kwargs["queryset"] = db_field.remote_field.model.objects.filter(customer=invoice.booking.customer)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+    
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        if 'invoice' in request.GET:
+            if 'invoice' in form.base_fields:
+                from django import forms
+                form.base_fields['invoice'].widget = forms.HiddenInput()
+        return form
+
     def has_change_permission(self, request, obj=None):
         return False # Immutability - Allocations should only be created or deleted
         

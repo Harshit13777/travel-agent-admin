@@ -255,6 +255,9 @@ def can_modify_invoice(invoice: Invoice) -> bool:
 
 
 def close_invoice(invoice: Invoice, user=None) -> Invoice:
+    from django.core.exceptions import ValidationError
+    if invoice.status == InvoiceStatus.VOID:
+        raise ValidationError("Cannot close a VOIDED invoice.")
     if invoice.status != InvoiceStatus.CLOSED:
         invoice.status = InvoiceStatus.CLOSED
         invoice.save(update_fields=['status'])
@@ -271,6 +274,9 @@ def close_invoice(invoice: Invoice, user=None) -> Invoice:
 def reopen_invoice(invoice: Invoice, user=None) -> Invoice:
     from django.core.exceptions import ValidationError
     from apps.invoices.choices import InvoiceStatus
+    
+    if invoice.status == InvoiceStatus.VOID:
+        raise ValidationError("Cannot re-open a VOIDED invoice.")
     
     if invoice.status != InvoiceStatus.CLOSED:
         raise ValidationError("Invoice is not closed.")

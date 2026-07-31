@@ -25,6 +25,14 @@ class PaymentAdmin(ModelAdmin):
     list_select_related = ['invoice', 'received_by']
     autocomplete_fields = ['invoice', 'received_by']
     
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        if 'invoice' in request.GET:
+            if 'invoice' in form.base_fields:
+                from django import forms
+                form.base_fields['invoice'].widget = forms.HiddenInput()
+        return form
+        
     def has_add_permission(self, request):
         return True # Handled in form validation or save_model normally, but we can't easily check invoice here since obj is None for add. Actually we can let them add, but they will fail in form clean if invoice is closed.
 
