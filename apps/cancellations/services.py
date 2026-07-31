@@ -61,9 +61,9 @@ class CancellationService:
         invoice_id = travelers[0].invoice_line.invoice_id
         invoice = Invoice.objects.select_for_update().get(id=invoice_id)
         
-        from apps.invoices.choices import InvoiceStatus
-        if invoice.status == InvoiceStatus.CLOSED:
-            raise ValidationError("Cannot cancel passengers for a CLOSED invoice.")
+        from apps.invoices.services import can_modify_invoice
+        if not can_modify_invoice(invoice):
+            raise ValidationError("Cannot cancel passengers for a CLOSED or VOIDED invoice.")
         
         # Ensure all travelers belong to the same locked invoice
         for traveler in travelers:
@@ -124,9 +124,9 @@ class CancellationService:
         # Validate using the central validation service
         CancellationValidationService.validate_components([cancellation.invoice_line_traveler], refund_data)
         
-        from apps.invoices.choices import InvoiceStatus
-        if cancellation.invoice_line_traveler.invoice_line.invoice.status == InvoiceStatus.CLOSED:
-            raise ValidationError("Cannot update cancellations for a CLOSED invoice.")
+        from apps.invoices.services import can_modify_invoice
+        if not can_modify_invoice(cancellation.invoice_line_traveler.invoice_line.invoice):
+            raise ValidationError("Cannot update cancellations for a CLOSED or VOIDED invoice.")
             
         data = refund_data.get(cancellation.invoice_line_traveler_id, {})
         cancellation.supplier_refund = data.get('supplier_refund', cancellation.supplier_refund)
@@ -152,9 +152,9 @@ class CancellationService:
     @classmethod
     @transaction.atomic
     def delete_cancellation(cls, cancellation, user=None):
-        from apps.invoices.choices import InvoiceStatus
-        if cancellation.invoice_line_traveler.invoice_line.invoice.status == InvoiceStatus.CLOSED:
-            raise ValidationError("Cannot delete cancellations for a CLOSED invoice.")
+        from apps.invoices.services import can_modify_invoice
+        if not can_modify_invoice(cancellation.invoice_line_traveler.invoice_line.invoice):
+            raise ValidationError("Cannot delete cancellations for a CLOSED or VOIDED invoice.")
             
         booking = cancellation.invoice_line_traveler.invoice_line.invoice.booking
         passenger_name = cancellation.invoice_line_traveler.traveler_name

@@ -11,9 +11,12 @@ class BookingTravelerForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.instance and self.instance.pk:
+            from apps.invoices.choices import InvoiceStatus
             from apps.cancellations.models import BookingCancellation
             has_cancellation = BookingCancellation.objects.filter(
                 invoice_line_traveler__booking_traveler=self.instance
+            ).exclude(
+                invoice_line_traveler__invoice_line__invoice__status=InvoiceStatus.VOID
             ).exists()
             if has_cancellation:
                 # Completely lock this row if the passenger is cancelled
@@ -55,9 +58,12 @@ class BookingTravelerInline(TabularInline):
     def cancellation_info(self, obj):
         if not obj or not obj.pk:
             return "Active"
+        from apps.invoices.choices import InvoiceStatus
         from apps.cancellations.models import BookingCancellation
         cancellation = BookingCancellation.objects.filter(
             invoice_line_traveler__booking_traveler=obj
+        ).exclude(
+            invoice_line_traveler__invoice_line__invoice__status=InvoiceStatus.VOID
         ).first()
         if cancellation:
             from django.utils.html import format_html
@@ -67,9 +73,11 @@ class BookingTravelerInline(TabularInline):
             
         booking = obj.booking_service.booking
         if booking.is_locked:
-            invoice_snapshot = obj.invoice_snapshots.first()
+            invoice_snapshot = obj.invoice_snapshots.exclude(
+                invoice_line__invoice__status=InvoiceStatus.VOID
+            ).order_by('-id').first()
+            
             if invoice_snapshot:
-                from apps.invoices.choices import InvoiceStatus
                 if invoice_snapshot.invoice_line.invoice.status != InvoiceStatus.CLOSED:
                     from django.utils.html import format_html
                     from django.urls import reverse

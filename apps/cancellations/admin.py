@@ -62,9 +62,9 @@ class BookingCancellationForm(ModelForm):
             return cleaned_data
             
         from django.core.exceptions import ValidationError
-        from apps.invoices.choices import InvoiceStatus
-        if ilt.invoice_line.invoice.status == InvoiceStatus.CLOSED:
-            raise ValidationError("Cannot add or edit cancellations for a CLOSED invoice.")
+        from apps.invoices.services import can_modify_invoice
+        if not can_modify_invoice(ilt.invoice_line.invoice):
+            raise ValidationError("Cannot add or edit cancellations for a CLOSED or VOIDED invoice.")
             
         if not self.instance.pk and hasattr(ilt, 'cancellation') and ilt.cancellation.pk is not None:
             raise ValidationError(f"Traveler {ilt.traveler_name} already has a cancellation record.")
@@ -237,14 +237,29 @@ class BookingCancellationAdmin(ModelAdmin):
         
     def has_change_permission(self, request, obj=None):
         if obj:
-            from apps.invoices.choices import InvoiceStatus
-            if obj.invoice_line_traveler.invoice_line.invoice.status == InvoiceStatus.CLOSED:
-                return False
+            from apps.invoices.services import can_modify_invoice
+            return can_modify_invoice(obj.invoice_line_traveler.invoice_line.invoice)
         return True
         
     def has_delete_permission(self, request, obj=None):
         if obj:
-            from apps.invoices.choices import InvoiceStatus
-            if obj.invoice_line_traveler.invoice_line.invoice.status == InvoiceStatus.CLOSED:
-                return False
+            from apps.invoices.services import can_modify_invoice
+            return can_modify_invoice(obj.invoice_line_traveler.invoice_line.invoice)
         return True
+
+    def delete_view(self, request, object_id, extra_context=None):
+        try:
+            obj = self.get_object(request, object_id)
+            booking_id = obj.invoice_line_traveler.invoice_line.invoice.booking_id if obj else None
+        except Exception:
+            booking_id = None
+            
+        response = super().delete_view(request, object_id, extra_context)
+        
+        if request.method == 'POST' and booking_id:
+            from django.http import HttpResponseRedirect
+            if isinstance(response, HttpResponseRedirect):
+                from django.urls import reverse
+                return HttpResponseRedirect(reverse('admin:bookings_booking_change', args=[booking_id]))
+                
+        return response
