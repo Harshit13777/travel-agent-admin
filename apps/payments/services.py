@@ -38,10 +38,7 @@ class PaymentService:
             user=user
         )
         
-        # Sync the invoice status automatically (e.g. UNPAID -> PARTIAL)
-        from apps.invoices.services import update_invoice_status
-        update_invoice_status(payment.invoice)
-        
+
         return payment
 
     @staticmethod
@@ -63,6 +60,3 @@ class PaymentService:
             user=user
         )
         
-        # Sync the invoice status automatically (e.g. PARTIAL -> UNPAID)
-        from apps.invoices.services import update_invoice_status
-        update_invoice_status(payment.invoice)

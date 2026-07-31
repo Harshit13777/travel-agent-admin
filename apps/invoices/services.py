@@ -252,13 +252,7 @@ def can_modify_invoice(invoice: Invoice) -> bool:
     """
     return invoice.status not in [InvoiceStatus.CLOSED, InvoiceStatus.VOID]
 
-def update_invoice_status(invoice: Invoice) -> Invoice:
-    with transaction.atomic():
-        new_status = invoice.payment_status
-        if invoice.status != new_status:
-            invoice.status = new_status
-            invoice.save(update_fields=['status'])
-        return invoice
+
 
 def close_invoice(invoice: Invoice, user=None) -> Invoice:
     if invoice.status != InvoiceStatus.CLOSED:
@@ -302,5 +296,4 @@ def reopen_invoice(invoice: Invoice, user=None) -> Invoice:
         metadata={"invoice_id": invoice.id},
         user=user
     )
-    update_invoice_status(invoice)
     return invoice

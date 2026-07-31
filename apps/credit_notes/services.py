@@ -62,11 +62,7 @@ class CreditNoteService:
         credit_note.allocated_amount += amount
         credit_note.save(update_fields=['allocated_amount'])
         
-        # Update invoice payment status using central service if necessary,
-        # but balance_due handles it via property. Just to trigger standard updates:
-        from apps.invoices.services import update_invoice_status
-        update_invoice_status(invoice)
-        
+
         from apps.bookings.services import log_booking_history
         log_booking_history(
             booking=invoice.booking,
@@ -101,10 +97,7 @@ class CreditNoteService:
         credit_note.allocated_amount -= amount
         credit_note.save(update_fields=['allocated_amount'])
         
-        # Trigger invoice update
-        from apps.invoices.services import update_invoice_status
-        update_invoice_status(invoice)
-        
+
         from apps.bookings.services import log_booking_history
         log_booking_history(
             booking=invoice.booking,
@@ -154,8 +147,6 @@ class CreditNoteService:
             credit_note.status = CreditNoteStatus.PARTIALLY_APPLIED
         credit_note.save(update_fields=['allocated_amount', 'status'])
         
-        from apps.invoices.services import update_invoice_status
-        update_invoice_status(invoice)
         return allocation
 
 
