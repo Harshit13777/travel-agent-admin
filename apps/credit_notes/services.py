@@ -30,6 +30,9 @@ class CreditNoteService:
         if invoice.status == InvoiceStatus.VOID:
             raise ValidationError("Cannot allocate credit to a VOIDED invoice.")
             
+        if credit_note.invoice and credit_note.invoice.status != InvoiceStatus.CLOSED:
+            raise ValidationError(f"Cannot allocate credit. The originating invoice ({credit_note.invoice.invoice_number}) must be CLOSED first.")
+            
         if credit_note.remaining_amount < amount:
             raise ValidationError(f"Cannot allocate {amount}. Only {credit_note.remaining_amount} remains on this credit note.")
             
