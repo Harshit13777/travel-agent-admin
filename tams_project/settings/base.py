@@ -190,47 +190,6 @@ UNFOLD = {
                         "icon": "flight_takeoff",
                         "link": "/admin/bookings/booking/",
                     },
-                    {
-                        "title": "Booking Services",
-                        "icon": "luggage",
-                        "link": "/admin/bookings/bookingservice/",
-                    },
-                    {
-                        "title": "Service Types",
-                        "icon": "category",
-                        "link": "/admin/bookings/servicetype/",
-                    },
-                ],
-            },
-            {
-                "title": "Finance & Billing",
-                "separator": True,
-                "items": [
-                    {
-                        "title": "Invoices",
-                        "icon": "receipt_long",
-                        "link": "/admin/invoices/invoice/",
-                    },
-                    {
-                        "title": "Payments",
-                        "icon": "payments",
-                        "link": "/admin/payments/payment/",
-                    },
-                    {
-                        "title": "Credit Notes",
-                        "icon": "credit_score",
-                        "link": "/admin/credit_notes/creditnote/",
-                    },
-                    {
-                        "title": "Credit Allocations",
-                        "icon": "payments",
-                        "link": "/admin/credit_notes/creditallocation/",
-                    },
-                    {
-                        "title": "Cancellations",
-                        "icon": "cancel",
-                        "link": "/admin/cancellations/bookingcancellation/",
-                    },
                 ],
             },
         ],
