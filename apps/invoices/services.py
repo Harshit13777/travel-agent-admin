@@ -236,6 +236,12 @@ def cancel_invoice(invoice: Invoice, user=None) -> Invoice:
         invoice.booking.locked_at = None
         invoice.booking.save(update_fields=['locked_at'])
         
+        # Delete any cancellations associated with this voided invoice
+        from apps.cancellations.models import BookingCancellation
+        cancellations = BookingCancellation.objects.filter(invoice_line_traveler__invoice_line__invoice=invoice)
+        if cancellations.exists():
+            cancellations.delete()
+        
         log_booking_history(
             booking=invoice.booking,
             action=BookingHistoryAction.INVOICE_CANCELLED,

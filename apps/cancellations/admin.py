@@ -144,6 +144,11 @@ class BookingCancellationAdmin(ModelAdmin):
             initial['invoice_line_traveler'] = request.GET['invoice_line_traveler']
         return initial
         
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        from apps.invoices.choices import InvoiceStatus
+        return qs.exclude(invoice_line_traveler__invoice_line__invoice__status=InvoiceStatus.VOID)
+
     def save_model(self, request, obj, form, change):
         from apps.cancellations.services import CancellationService
         from django.core.exceptions import ValidationError
