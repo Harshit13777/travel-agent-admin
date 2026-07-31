@@ -112,8 +112,10 @@ class InvoiceAdmin(ModelAdmin):
             html += f'<strong>Cancellations/Refunds</strong><span>- {obj.currency} {total_cancel}</span></summary>'
             html += '<div style="padding-left: 20px; margin-top: 4px;">'
             for c in cancellations:
+                from django.urls import reverse
+                cancel_url = reverse('admin:cancellations_bookingcancellation_change', args=[c.id])
                 html += f'<div style="display: flex; justify-content: space-between; margin-bottom: 2px;">'
-                html += f'<span>Traveler {c.invoice_line_traveler.traveler_name}:</span>'
+                html += f'<span><a href="{cancel_url}" style="color: #ef4444; text-decoration: underline;">Traveler {c.invoice_line_traveler.traveler_name}</a>:</span>'
                 html += f'<span>- {obj.currency} {c.total_refund}</span></div>'
             html += '</div></details>'
             
