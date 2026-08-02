@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'apps.credit_notes',
     'apps.documents',
     'apps.reminders',
+    'apps.notifications',
 ]
 
 MIDDLEWARE = [
